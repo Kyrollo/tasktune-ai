@@ -1,0 +1,121 @@
+﻿@using TaskTuneAPI.Controllers
+@{
+    ViewBag.Title = "API Detail";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var route = (ApiRouteInfo)ViewBag.Route;
+}
+
+<a href="/apis" class="back-btn">← Back to All APIs</a>
+
+<div class="page-header">
+    <h1>
+        <span class="verb verb-@route.Verb.ToLower() verb-lg">@route.Verb</span>
+        &nbsp;/@route.Path
+    </h1>
+    <span class="controller-tag">⚙️ @route.ControllerName Controller &nbsp;·&nbsp; @route.ActionName</span>
+</div>
+
+<div class="detail-grid">
+
+    <div class="detail-card card-url">
+        <div class="detail-label">Full URL</div>
+        <div class="url-copy-wrap">
+            <code id="urlCode">/@route.Path</code>
+            <button class="copy-btn" onclick="copyUrl()">📋 Copy</button>
+        </div>
+    </div>
+
+    <div class="detail-card card-meta">
+        <div class="detail-label">Endpoint Info</div>
+        <div class="meta-row">
+            <div class="meta-item">
+                <div class="detail-label">Method</div>
+                <span class="verb verb-@route.Verb.ToLower() verb-lg">@route.Verb</span>
+            </div>
+            <div class="meta-item">
+                <div class="detail-label">Controller</div>
+                <div class="detail-value">@route.ControllerName</div>
+            </div>
+            <div class="meta-item">
+                <div class="detail-label">Action</div>
+                <div class="detail-value">@route.ActionName</div>
+            </div>
+            <div class="meta-item">
+                <div class="detail-label">Relative Path</div>
+                <div class="detail-value">/@route.Path</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-card card-tryit">
+        <div class="detail-label">Try It</div>
+        <div class="try-controls">
+            <input type="text" id="bearerToken" placeholder="Bearer token (optional)" />
+            <textarea id="reqBody" placeholder="Request body JSON — for POST / PUT / PATCH"></textarea>
+            <button class="btn btn-primary" onclick="tryRequest()">▶ Send Request</button>
+        </div>
+        <div id="tryResult" class="try-result"></div>
+    </div>
+
+</div>
+
+<script>
+    // Use relative path — same origin, no CORS issue
+    var RELATIVE_PATH = '/@route.Path';
+    var METHOD        = '@route.Verb';
+
+    function copyUrl() {
+        var fullUrl = window.location.origin + RELATIVE_PATH;
+        navigator.clipboard.writeText(fullUrl);
+        var btn = document.querySelector('.copy-btn');
+        btn.textContent = '✅ Copied!';
+        setTimeout(function () { btn.textContent = '📋 Copy'; }, 2000);
+    }
+
+    function tryRequest() {
+        var token = document.getElementById('bearerToken').value.trim();
+        var body  = document.getElementById('reqBody').value.trim();
+        var res   = document.getElementById('tryResult');
+
+        res.innerHTML = '<span class="loading">⏳ Sending…</span>';
+
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        var opts = { method: METHOD, headers: headers };
+        if (['POST', 'PUT', 'PATCH'].indexOf(METHOD) !== -1 && body)
+            opts.body = body;
+
+        // Use relative URL — avoids all CORS and port mismatch issues
+        fetch(RELATIVE_PATH, opts)
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    var cls = r.ok ? 'status-ok' : 'status-err';
+                    var prettyText = tryPrettyJson(text);
+                    res.innerHTML =
+                        '<div class="res-status ' + cls + '">' +
+                            r.status + ' ' + r.statusText +
+                        '</div>' +
+                        '<pre class="res-body">' + escHtml(prettyText) + '</pre>';
+                });
+            })
+            .catch(function (e) {
+                res.innerHTML =
+                    '<div class="res-status status-err">⚠ ' + e.message + '</div>' +
+                    '<p style="color:var(--muted);font-size:.82rem;margin-top:.5rem">' +
+                        'Tip: If this endpoint requires auth, paste your Bearer token above.' +
+                    '</p>';
+            });
+    }
+
+    function tryPrettyJson(text) {
+        try { return JSON.stringify(JSON.parse(text), null, 2); }
+        catch (e) { return text; }
+    }
+
+    function escHtml(s) {
+        return s.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+    }
+</script>

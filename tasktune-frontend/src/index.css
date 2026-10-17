@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0A0A0A;
+  --color-surface: #111111;
+  --color-surface-hover: #1A1A1A;
+  --color-border: #1E1E1E;
+  --color-border-light: #2A2A2A;
+  --color-orange: #F97316;
+  --color-orange-hover: #EA580C;
+  --color-orange-light: rgba(249, 115, 22, 0.1);
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A0A0A0;
+  --color-text-muted: #6B7280;
+  --color-success: #22C55E;
+  --color-warning: #EAB308;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Light theme overrides */
+[data-theme="light"] {
+  --color-bg: #F5F5F5;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F0F0F0;
+  --color-border: #E5E5E5;
+  --color-border-light: #D4D4D4;
+  --color-orange-light: rgba(249, 115, 22, 0.08);
+  --color-text-primary: #111111;
+  --color-text-secondary: #555555;
+  --color-text-muted: #888888;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg, #0A0A0A);
+    color: var(--color-text-primary, #FFFFFF);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  /* Dark scrollbar (default) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg, #0A0A0A);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-light, #2A2A2A);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3A3A3A;
+  }
+
+  /* Date picker calendar icon visibility */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+  [data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 0.6;
+  }
+  [data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  /* Light theme text color for inputs and selects */
+  [data-theme="light"] input,
+  [data-theme="light"] select,
+  [data-theme="light"] textarea {
+    color: #111111;
+  }
+
+  [data-theme="light"] input::placeholder,
+  [data-theme="light"] select::placeholder,
+  [data-theme="light"] textarea::placeholder {
+    color: #999999;
+  }
+
+  /* Override hard-coded text-white in light theme */
+  [data-theme="light"] .text-white {
+    color: #111111;
+  }
+
+  [data-theme="light"] button.bg-orange,
+  [data-theme="light"] .bg-orange.text-white,
+  [data-theme="light"] .bg-orange .text-white,
+  [data-theme="light"] .bg-success.text-white,
+  [data-theme="light"] .bg-danger.text-white,
+  [data-theme="light"] .bg-info.text-white {
+    color: #FFFFFF;
+  }
+
+  [data-theme="light"] .hover\:text-white:hover {
+    color: var(--color-text-primary);
+  }
+
+  /* Override hard-coded bg colors in light theme */
+  [data-theme="light"] .bg-bg {
+    background-color: var(--color-bg);
+  }
+  [data-theme="light"] .bg-surface {
+    background-color: var(--color-surface);
+  }
+  [data-theme="light"] .border-border {
+    border-color: var(--color-border);
+  }
+
+  /* Light theme card shadow */
+  [data-theme="light"] .bg-surface {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Light theme dropdown options */
+  [data-theme="light"] option {
+    background-color: #FFFFFF;
+    color: #111111;
+  }
+
+  /* Light theme chart tooltip contrast */
+  [data-theme="light"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+    background-color: #FFFFFF !important;
+    border-color: #E5E5E5 !important;
+    color: #111111 !important;
+  }
+
+  /* Light theme badge readability */
+  [data-theme="light"] .bg-orange\/5 {
+    background-color: rgba(249, 115, 22, 0.1);
+  }
+  [data-theme="light"] .bg-orange\/10 {
+    background-color: rgba(249, 115, 22, 0.12);
+  }
+  [data-theme="light"] .bg-orange\/20 {
+    background-color: rgba(249, 115, 22, 0.15);
+  }
+
+  /* Light theme scrollbar */
+  [data-theme="light"] ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
+  [data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: #D4D4D4;
+  }
+  [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+    background: #BBBBBB;
+  }
+}

@@ -1,0 +1,83 @@
+# AI Agents — Architecture & Setup
+
+## Overview
+All AI agents are served as **FastAPI** applications. The C# backend calls them
+over HTTP, with a subprocess fallback for the Task Guidance agent.
+
+## Agents
+
+| Agent | Module | Port | Endpoint |
+|-------|--------|------|----------|
+| Task Guidance | `agent2_task_guidance` | 5050 | `POST /api/guidance` |
+| Progress Tracking | `agent3_progress_tracking` | 8003 | `POST /api/ai/progress-tracking` |
+
+## Web.config Keys (per agent)
+
+```xml
+<!-- Agent: Task Guidance -->
+<add key="AgentTaskGuidance" value="agent2_task_guidance" />
+<add key="AgentTaskGuidanceUrl" value="http://localhost:5050/api/guidance" />
+
+<!-- Agent: Progress Tracking -->
+<add key="AgentProgressTracking" value="agent3_progress_tracking" />
+<add key="AgentProgressTrackingUrl" value="http://localhost:8003/api/ai/progress-tracking" />
+```
+
+## How to Run
+
+### Step 1: Install Python dependencies
+```powershell
+cd "d:\Personal\Courses\Agentic AI - NTI\Final Project\files\tasktune-agents"
+pip install -r requirements.txt
+```
+
+### Step 2: Start the Task Guidance Agent (FastAPI)
+```powershell
+cd "d:\Personal\Courses\Agentic AI - NTI\Final Project\files\tasktune-agents"
+uvicorn agent2_task_guidance.server:app --reload --port 5050
+```
+> Server runs on **http://localhost:5050**
+> Docs at **http://localhost:5050/docs**
+
+### Step 3: Start the Progress Tracking Agent (FastAPI)
+```powershell
+cd "d:\Personal\Courses\Agentic AI - NTI\Final Project\files\tasktune-agents"
+uvicorn agent3_progress_tracking.main:app --reload --port 8003
+```
+> Server runs on **http://localhost:8003**
+> Docs at **http://localhost:8003/docs**
+
+### Step 4: Rebuild & Start the C# Backend
+Open the solution in **Visual Studio** and rebuild (Ctrl+Shift+B), then run (F5).
+
+### Step 5: Start the Frontend
+```powershell
+cd "d:\Personal\Courses\Agentic AI - NTI\Final Project\files\tasktune-frontend"
+npm run dev
+```
+
+## Architecture
+
+```
+Frontend (React)                    Backend (ASP.NET 4.8)              Agents (Python/FastAPI)
+──────────────────                  ─────────────────────              ─────────────────────
+TasksManagement.jsx                 TasksController.cs                 agent2: server.py (port 5050)
+  │ "AI Recommend" button             │                                  │
+  ├─ POST /api/tasks/recommend ──────►├─ HTTP ──────────────────────►  POST /api/guidance
+  │                                   │                                  │
+TaskDetails.jsx                       │                                  ├─ run_task_guidance()
+  │ "Generate Guidance" button        │                                  │   (LangGraph pipeline)
+  ├─ POST /api/tasks/{id}/           ├─ Strategy 1: HTTP ──────────►   │
+  │   guidance/generate              │   (http://localhost:5050)        │
+  │                                   ├─ Strategy 2: subprocess         │
+  │                                   │   (fallback if HTTP fails)       │
+  │◄─ JSON guidance response ◄───────┤◄─────────────────────────────────┘
+  │                                   │
+  └─ Renders in GuidanceSection       └─ Persists to AIActionsLog
+
+                                                                       agent3: main.py (port 8003)
+                                                                         │
+                                      ├─ HTTP ──────────────────────►  POST /api/ai/progress-tracking
+                                      │                                  │
+                                      │◄─ JSON response ◄──────────────┘
+```

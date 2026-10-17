@@ -1,0 +1,69 @@
+﻿@using TaskTuneAPI.Controllers
+@model List<ApiRouteInfo>
+@{
+    ViewBag.Title = "API Endpoints";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var colors = new[] { "blue", "purple", "green", "orange", "pink", "teal" };
+    var grouped = Model.GroupBy(r => r.ControllerName).OrderBy(g => g.Key).ToList();
+}
+
+<div class="page-header">
+    <h1>🔌 API Endpoints</h1>
+    <p>All endpoints auto-discovered from your controllers. Click any row to view its full detail page.</p>
+</div>
+
+<div class="search-bar-wrap">
+    <input type="text" id="searchBox"
+           placeholder="🔍  Filter by controller, path or verb…"
+           oninput="filterRoutes()" />
+</div>
+
+<div id="routeGroups">
+    @for (int i = 0; i < grouped.Count; i++)
+    {
+        var group = grouped[i];
+        var color = colors[i % colors.Length];
+        var routes = group.ToList();
+
+        <div class="controller-group" data-controller="@group.Key.ToLower()">
+            <div class="group-header g-@color">
+                <span class="group-icon">⚙️</span>
+                <h2>@group.Key</h2>
+                <span class="badge">@routes.Count route@(routes.Count != 1 ? "s" : "")</span>
+            </div>
+            <div class="route-list">
+                @foreach (var route in routes)
+                {
+                    <a href="/apis/detail?path=@Uri.EscapeDataString(route.Path)"
+                       class="route-row"
+                       data-verb="@route.Verb.ToLower()"
+                       data-path="@route.Path.ToLower()"
+                       data-action="@route.ActionName.ToLower()">
+                        <span class="verb verb-@route.Verb.ToLower()">@route.Verb</span>
+                        <span class="route-path">/@route.Path</span>
+                        <span class="route-action">@route.ActionName</span>
+                        <span class="route-arrow">›</span>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<script>
+function filterRoutes() {
+    var q = document.getElementById('searchBox').value.toLowerCase();
+    document.querySelectorAll('.route-row').forEach(function(row) {
+        var match = row.dataset.path.includes(q)
+                 || row.dataset.verb.includes(q)
+                 || row.dataset.action.includes(q)
+                 || row.closest('.controller-group').dataset.controller.includes(q);
+        row.style.display = match ? '' : 'none';
+    });
+    document.querySelectorAll('.controller-group').forEach(function(grp) {
+        var anyVisible = Array.from(grp.querySelectorAll('.route-row'))
+                              .some(function(r){ return r.style.display !== 'none'; });
+        grp.style.display = anyVisible ? '' : 'none';
+    });
+}
+</script>

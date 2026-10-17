@@ -1,0 +1,2688 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskTune API — Documentation</title>
+    <style>
+        /* ========== RESET & BASE ========== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f111a;
+            color: #c9d1d9;
+            line-height: 1.6;
+        }
+
+        a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+            a:hover {
+                text-decoration: underline;
+            }
+
+        /* ========== LAYOUT ========== */
+        .page-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: #161b22;
+            border-right: 1px solid #30363d;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            overflow-y: auto;
+            z-index: 100;
+            transition: transform 0.3s;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px 16px;
+            border-bottom: 1px solid #30363d;
+        }
+
+            .sidebar-header h1 {
+                font-size: 20px;
+                color: #58a6ff;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .sidebar-header .version {
+                font-size: 11px;
+                background: #238636;
+                color: #fff;
+                padding: 2px 8px;
+                border-radius: 12px;
+            }
+
+            .sidebar-header p {
+                font-size: 12px;
+                color: #8b949e;
+                margin-top: 6px;
+            }
+
+        .sidebar nav {
+            padding: 12px 0;
+        }
+
+        .nav-group-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8b949e;
+            padding: 12px 20px 6px;
+            font-weight: 600;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 20px;
+            font-size: 13px;
+            color: #c9d1d9;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.15s;
+        }
+
+            .nav-link:hover {
+                background: #1c2333;
+                color: #58a6ff;
+                text-decoration: none;
+            }
+
+            .nav-link.active {
+                background: #1c2333;
+                color: #58a6ff;
+                border-left-color: #58a6ff;
+            }
+
+        .method-badge-sm {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            min-width: 36px;
+            text-align: center;
+        }
+
+        /* Main */
+        .main {
+            margin-left: 280px;
+            flex: 1;
+        }
+
+        .top-bar {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 12px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+            .top-bar .base-url {
+                font-family: 'Cascadia Code', 'Fira Code', monospace;
+                font-size: 13px;
+                background: #0d1117;
+                padding: 6px 14px;
+                border-radius: 6px;
+                border: 1px solid #30363d;
+                color: #7ee787;
+            }
+
+            .top-bar .health-btn {
+                padding: 6px 16px;
+                background: #238636;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+                .top-bar .health-btn:hover {
+                    background: #2ea043;
+                }
+
+        .content {
+            padding: 32px;
+            max-width: 1100px;
+        }
+
+        /* Hero */
+        .hero {
+            background: linear-gradient(135deg, #161b22 0%, #1c2333 100%);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 48px 40px;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+            .hero h2 {
+                font-size: 32px;
+                color: #f0f6fc;
+                margin-bottom: 12px;
+            }
+
+            .hero p {
+                font-size: 16px;
+                color: #8b949e;
+                max-width: 600px;
+                margin: 0 auto 24px;
+            }
+
+        .hero-stats {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+
+        .hero-stat {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px 24px;
+            text-align: center;
+        }
+
+            .hero-stat .num {
+                font-size: 28px;
+                font-weight: 700;
+                color: #58a6ff;
+            }
+
+            .hero-stat .label {
+                font-size: 12px;
+                color: #8b949e;
+            }
+
+        /* Sections */
+        .api-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .api-section-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+            .api-section-header:hover {
+                background: #1c2333;
+            }
+
+            .api-section-header h3 {
+                font-size: 18px;
+                color: #f0f6fc;
+                flex: 1;
+            }
+
+            .api-section-header .count {
+                font-size: 12px;
+                background: #30363d;
+                color: #8b949e;
+                padding: 2px 10px;
+                border-radius: 12px;
+            }
+
+            .api-section-header .arrow {
+                color: #8b949e;
+                transition: transform 0.2s;
+                font-size: 14px;
+            }
+
+            .api-section-header.open .arrow {
+                transform: rotate(90deg);
+            }
+
+        .api-section-body {
+            display: none;
+        }
+
+            .api-section-body.open {
+                display: block;
+            }
+
+        /* Endpoint card */
+        .endpoint {
+            border-top: 1px solid #21262d;
+            padding: 20px 24px;
+        }
+
+            .endpoint:first-child {
+                border-top: none;
+            }
+
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .method-badge {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .method-GET {
+            background: #1f3a2a;
+            color: #7ee787;
+        }
+
+        .method-POST {
+            background: #2a2017;
+            color: #f0b856;
+        }
+
+        .method-PUT {
+            background: #1a2640;
+            color: #58a6ff;
+        }
+
+        .method-DELETE {
+            background: #3d1a1a;
+            color: #f85149;
+        }
+
+        .method-PATCH {
+            background: #2a1740;
+            color: #bc8cff;
+        }
+
+        .endpoint-path {
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 14px;
+            color: #f0f6fc;
+        }
+
+        .endpoint-auth {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #3d1a1a;
+            color: #f85149;
+        }
+
+            .endpoint-auth.public {
+                background: #1f3a2a;
+                color: #7ee787;
+            }
+
+        .endpoint-desc {
+            font-size: 14px;
+            color: #8b949e;
+            margin-bottom: 16px;
+        }
+
+        /* Sub sections inside endpoint */
+        .endpoint-detail-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #58a6ff;
+            margin: 16px 0 8px;
+            font-weight: 600;
+        }
+
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+            .param-table th {
+                text-align: left;
+                padding: 8px 12px;
+                background: #0d1117;
+                color: #8b949e;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .param-table td {
+                padding: 8px 12px;
+                border-top: 1px solid #21262d;
+                vertical-align: top;
+            }
+
+        .param-name {
+            font-family: monospace;
+            color: #f0f6fc;
+            font-weight: 600;
+        }
+
+        .param-type {
+            font-family: monospace;
+            color: #bc8cff;
+            font-size: 12px;
+        }
+
+        .param-required {
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 3px;
+            background: #3d1a1a;
+            color: #f85149;
+        }
+
+        .param-optional {
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 3px;
+            background: #1f3a2a;
+            color: #7ee787;
+        }
+
+        /* Code block */
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre;
+            color: #c9d1d9;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .code-label {
+            font-size: 11px;
+            color: #8b949e;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .json-key {
+            color: #79c0ff;
+        }
+
+        .json-string {
+            color: #a5d6ff;
+        }
+
+        .json-number {
+            color: #f0b856;
+        }
+
+        .json-bool {
+            color: #f85149;
+        }
+
+        .json-null {
+            color: #8b949e;
+        }
+
+        /* Schema */
+        .schema-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .schema-row {
+            display: flex;
+            gap: 12px;
+            padding: 4px 0;
+            font-size: 13px;
+            align-items: baseline;
+        }
+
+            .schema-row + .schema-row {
+                border-top: 1px solid #21262d;
+                padding-top: 6px;
+            }
+
+        /* Responsive */
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            color: #c9d1d9;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+                .sidebar.open {
+                    transform: translateX(0);
+                }
+
+            .main {
+                margin-left: 0;
+            }
+
+            .hamburger {
+                display: block;
+            }
+
+            .hero {
+                padding: 32px 20px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <!-- ============ SIDEBAR ============ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>&#9889; TaskTune API <span class="version">v1.0</span></h1>
+                <p>Complete REST API Reference</p>
+            </div>
+            <nav id="sidebar-nav">
+                <!-- Populated by JS -->
+            </nav>
+        </aside>
+
+        <!-- ============ MAIN ============ -->
+        <div class="main">
+            <div class="top-bar">
+                <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776;</button>
+                <span class="base-url" id="baseUrlDisplay">https://localhost:44352/api</span>
+                <button class="health-btn" onclick="checkHealth()">&#10003; Check Health</button>
+            </div>
+
+            <div class="content" id="content">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+// ============================================================
+//  FULL API DEFINITION DATA
+// ============================================================
+const API = [
+
+// ──────────────────────────────────────────────
+// 1. HEALTH CHECK
+// ──────────────────────────────────────────────
+{
+    group: "Health Check",
+    icon: "&#128154;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/health",
+            auth: "Public",
+            summary: "Basic health check — confirms the API is running.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "status": "Healthy",
+  "timestamp": "2026-03-18T14:30:00Z",
+  "version": "1.0.0"
+}`
+            },
+            schema: [
+                { name: "status", type: "string", desc: "\"Healthy\" if the API is running" },
+                { name: "timestamp", type: "datetime", desc: "Current server UTC time" },
+                { name: "version", type: "string", desc: "API version number" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/health/db",
+            auth: "Public",
+            summary: "Database connectivity check — attempts to open a connection and query the database.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "status": "Connected",
+  "database": "TaskTuneAIDatabase",
+  "server": "(LocalDB)\\\\MSSQLLocalDB",
+  "companyCount": 3
+}`
+            },
+            schema: [
+                { name: "status", type: "string", desc: "\"Connected\" or \"Disconnected\"" },
+                { name: "database", type: "string", desc: "Database name" },
+                { name: "server", type: "string", desc: "SQL Server instance" },
+                { name: "companyCount", type: "int", desc: "Number of companies in the database" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 2. AUTHENTICATION
+// ──────────────────────────────────────────────
+{
+    group: "Authentication",
+    icon: "&#128274;",
+    endpoints: [
+        {
+            method: "POST",
+            path: "/api/auth/login",
+            auth: "Public",
+            summary: "Authenticate a user with email and password. Returns a JWT access token and a refresh token.",
+            params: [
+                { name: "email", type: "string", required: true, location: "body", desc: "User's registered email address" },
+                { name: "password", type: "string", required: true, location: "body", desc: "User's plaintext password (hashed via BCrypt on server)" }
+            ],
+            requestBody: `{
+  "email": "admin@tasktune.com",
+  "password": "Admin@123"
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "c3VwZXItcmFuZG9t...",
+  "expiresAt": "2026-03-18T15:30:00Z",
+  "user": {
+    "userId": 1,
+    "fullName": "Ahmed Admin",
+    "email": "admin@tasktune.com",
+    "role": 5,
+    "roleName": "Admin",
+    "companyId": 1,
+    "companyName": "TaskTune Corp",
+    "departmentId": 1,
+    "positionId": 1
+  }
+}`
+            },
+            errorResponses: [
+                { status: 400, desc: "Missing email or password" },
+                { status: 401, desc: "Invalid email or password" },
+                { status: 403, desc: "Account is deactivated" }
+            ],
+            schema: [
+                { name: "token", type: "string", desc: "JWT access token (valid for 60 min)" },
+                { name: "refreshToken", type: "string", desc: "Refresh token (valid for 7 days)" },
+                { name: "expiresAt", type: "datetime", desc: "Token expiration timestamp" },
+                { name: "user", type: "object", desc: "Authenticated user profile" },
+                { name: "user.userId", type: "int", desc: "User ID" },
+                { name: "user.fullName", type: "string", desc: "Full name" },
+                { name: "user.email", type: "string", desc: "Email address" },
+                { name: "user.role", type: "int", desc: "Role level (0–5)" },
+                { name: "user.roleName", type: "string", desc: "Role display name" },
+                { name: "user.companyId", type: "int", desc: "Company ID" },
+                { name: "user.companyName", type: "string", desc: "Company name" },
+                { name: "user.departmentId", type: "int?", desc: "Department ID (nullable)" },
+                { name: "user.positionId", type: "int?", desc: "Position ID (nullable)" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/auth/refresh",
+            auth: "Public",
+            summary: "Exchange a refresh token for a new JWT access token.",
+            params: [
+                { name: "refreshToken", type: "string", required: true, location: "body", desc: "Valid refresh token from previous login or refresh" }
+            ],
+            requestBody: `{
+  "refreshToken": "c3VwZXItcmFuZG9t..."
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "bmV3LXJlZnJlc2g...",
+  "expiresAt": "2026-03-18T16:30:00Z"
+}`
+            },
+            errorResponses: [
+                { status: 401, desc: "Invalid or expired refresh token" }
+            ],
+            schema: [
+                { name: "token", type: "string", desc: "New JWT access token" },
+                { name: "refreshToken", type: "string", desc: "New refresh token" },
+                { name: "expiresAt", type: "datetime", desc: "New expiration time" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/auth/logout",
+            auth: "JWT Required",
+            summary: "Invalidate the current refresh token.",
+            params: [
+                { name: "refreshToken", type: "string", required: true, location: "body", desc: "Refresh token to revoke" }
+            ],
+            requestBody: `{
+  "refreshToken": "c3VwZXItcmFuZG9t..."
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "message": "Logged out successfully"
+}`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation message" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/auth/forgot-password",
+            auth: "Public",
+            summary: "Request a password reset link (sends email — placeholder implementation).",
+            params: [
+                { name: "email", type: "string", required: true, location: "body", desc: "Registered email address" }
+            ],
+            requestBody: `{
+  "email": "user@tasktune.com"
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "message": "If this email exists, a reset link has been sent."
+}`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Generic response (no info leak)" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 3. USERS
+// ──────────────────────────────────────────────
+{
+    group: "Users",
+    icon: "&#128100;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/users",
+            auth: "JWT Required — Manager+",
+            summary: "Get a paginated list of users in your company. Supports search and role filtering.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page number (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Items per page (default 20, max 100)" },
+                { name: "search", type: "string", required: false, location: "query", desc: "Search by name or email" },
+                { name: "role", type: "int", required: false, location: "query", desc: "Filter by role (0–5)" },
+                { name: "departmentId", type: "int", required: false, location: "query", desc: "Filter by department" },
+                { name: "isActive", type: "bool", required: false, location: "query", desc: "Filter by active status" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "userId": 1,
+      "fullName": "Ahmed Admin",
+      "email": "admin@tasktune.com",
+      "role": 5,
+      "roleName": "Admin",
+      "departmentName": "Engineering",
+      "positionName": "CTO",
+      "isActive": true,
+      "createdAt": "2026-01-10T08:00:00Z"
+    }
+  ],
+  "totalCount": 25,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 2
+}`
+            },
+            schema: [
+                { name: "items", type: "array", desc: "Array of user summary objects" },
+                { name: "items[].userId", type: "int", desc: "Unique user identifier" },
+                { name: "items[].fullName", type: "string", desc: "User's full name" },
+                { name: "items[].email", type: "string", desc: "Email address" },
+                { name: "items[].role", type: "int", desc: "Role level: 0=Employee, 1=TeamLead, 2=Supervisor, 3=Manager, 4=CEO, 5=Admin" },
+                { name: "items[].roleName", type: "string", desc: "Human-readable role name" },
+                { name: "items[].departmentName", type: "string?", desc: "Department name" },
+                { name: "items[].positionName", type: "string?", desc: "Position title" },
+                { name: "items[].isActive", type: "bool", desc: "Whether the account is active" },
+                { name: "items[].createdAt", type: "datetime", desc: "Account creation date" },
+                { name: "totalCount", type: "int", desc: "Total matching records" },
+                { name: "page", type: "int", desc: "Current page" },
+                { name: "pageSize", type: "int", desc: "Items per page" },
+                { name: "totalPages", type: "int", desc: "Total number of pages" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/users/{id}",
+            auth: "JWT Required",
+            summary: "Get detailed profile of a single user. Employees can only view themselves.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "User ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "userId": 1,
+  "fullName": "Ahmed Admin",
+  "email": "admin@tasktune.com",
+  "phoneNumber": "+201234567890",
+  "role": 5,
+  "roleName": "Admin",
+  "companyId": 1,
+  "companyName": "TaskTune Corp",
+  "departmentId": 1,
+  "departmentName": "Engineering",
+  "positionId": 1,
+  "positionName": "CTO",
+  "isActive": true,
+  "createdAt": "2026-01-10T08:00:00Z",
+  "updatedAt": "2026-03-01T12:00:00Z"
+}`
+            },
+            errorResponses: [
+                { status: 403, desc: "Not authorized to view this user" },
+                { status: 404, desc: "User not found" }
+            ],
+            schema: [
+                { name: "userId", type: "int", desc: "Unique user identifier" },
+                { name: "fullName", type: "string", desc: "Full name" },
+                { name: "email", type: "string", desc: "Email address" },
+                { name: "phoneNumber", type: "string?", desc: "Phone number" },
+                { name: "role", type: "int", desc: "Role level (0–5)" },
+                { name: "roleName", type: "string", desc: "Role display name" },
+                { name: "companyId", type: "int", desc: "Company ID" },
+                { name: "companyName", type: "string", desc: "Company name" },
+                { name: "departmentId", type: "int?", desc: "Department ID" },
+                { name: "departmentName", type: "string?", desc: "Department name" },
+                { name: "positionId", type: "int?", desc: "Position ID" },
+                { name: "positionName", type: "string?", desc: "Position title" },
+                { name: "isActive", type: "bool", desc: "Account active status" },
+                { name: "createdAt", type: "datetime", desc: "Creation timestamp" },
+                { name: "updatedAt", type: "datetime?", desc: "Last update timestamp" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/users",
+            auth: "JWT Required — Admin only",
+            summary: "Create a new user account. Password is hashed with BCrypt before storage.",
+            params: [
+                { name: "fullName", type: "string", required: true, location: "body", desc: "Full name" },
+                { name: "email", type: "string", required: true, location: "body", desc: "Unique email address" },
+                { name: "password", type: "string", required: true, location: "body", desc: "Initial password (min 8 chars)" },
+                { name: "phoneNumber", type: "string", required: false, location: "body", desc: "Phone number" },
+                { name: "role", type: "int", required: true, location: "body", desc: "Role (0–5)" },
+                { name: "departmentId", type: "int", required: false, location: "body", desc: "Department ID" },
+                { name: "positionId", type: "int", required: false, location: "body", desc: "Position ID" }
+            ],
+            requestBody: `{
+  "fullName": "Sara Engineer",
+  "email": "sara@tasktune.com",
+  "password": "SecurePass@123",
+  "phoneNumber": "+201098765432",
+  "role": 0,
+  "departmentId": 2,
+  "positionId": 3
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "userId": 26,
+  "fullName": "Sara Engineer",
+  "email": "sara@tasktune.com",
+  "role": 0,
+  "roleName": "Employee",
+  "message": "User created successfully"
+}`
+            },
+            errorResponses: [
+                { status: 400, desc: "Validation error or email already exists" },
+                { status: 403, desc: "Only Admin can create users" }
+            ],
+            schema: [
+                { name: "userId", type: "int", desc: "Newly created user ID" },
+                { name: "fullName", type: "string", desc: "Full name" },
+                { name: "email", type: "string", desc: "Email address" },
+                { name: "role", type: "int", desc: "Assigned role" },
+                { name: "roleName", type: "string", desc: "Role name" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/users/{id}",
+            auth: "JWT Required — Self or Admin",
+            summary: "Update user profile. Users can update their own name/phone. Admins can change role, department, position.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "User ID to update" },
+                { name: "fullName", type: "string", required: false, location: "body", desc: "New full name" },
+                { name: "phoneNumber", type: "string", required: false, location: "body", desc: "New phone number" },
+                { name: "role", type: "int", required: false, location: "body", desc: "New role (Admin only)" },
+                { name: "departmentId", type: "int", required: false, location: "body", desc: "New department (Admin only)" },
+                { name: "positionId", type: "int", required: false, location: "body", desc: "New position (Admin only)" }
+            ],
+            requestBody: `{
+  "fullName": "Sara Senior Engineer",
+  "phoneNumber": "+201111111111",
+  "role": 1,
+  "departmentId": 2,
+  "positionId": 4
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "message": "User updated successfully",
+  "userId": 26
+}`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" },
+                { name: "userId", type: "int", desc: "Updated user ID" }
+            ]
+        },
+        {
+            method: "DELETE",
+            path: "/api/users/{id}",
+            auth: "JWT Required — Admin only",
+            summary: "Soft-delete (deactivate) a user. Sets isActive = false.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "User ID to deactivate" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "message": "User deactivated successfully",
+  "userId": 26
+}`
+            },
+            errorResponses: [
+                { status: 404, desc: "User not found" }
+            ],
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" },
+                { name: "userId", type: "int", desc: "Deactivated user ID" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 4. PROJECTS
+// ──────────────────────────────────────────────
+{
+    group: "Projects",
+    icon: "&#128193;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/projects",
+            auth: "JWT Required",
+            summary: "List all projects for the authenticated user's company. Supports pagination and status filter.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page number (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Items per page (default 20)" },
+                { name: "status", type: "string", required: false, location: "query", desc: "Filter: Active, Completed, OnHold, Cancelled" },
+                { name: "search", type: "string", required: false, location: "query", desc: "Search by project name" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "projectId": 1,
+      "projectName": "Website Redesign",
+      "description": "Complete overhaul of company website",
+      "startDate": "2026-01-15",
+      "endDate": "2026-06-15",
+      "status": "Active",
+      "createdByName": "Ahmed Admin",
+      "taskCount": 12,
+      "completedTaskCount": 4
+    }
+  ],
+  "totalCount": 5,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].projectId", type: "int", desc: "Project ID" },
+                { name: "items[].projectName", type: "string", desc: "Project name" },
+                { name: "items[].description", type: "string?", desc: "Project description" },
+                { name: "items[].startDate", type: "date", desc: "Start date" },
+                { name: "items[].endDate", type: "date?", desc: "End date" },
+                { name: "items[].status", type: "string", desc: "Active | Completed | OnHold | Cancelled" },
+                { name: "items[].createdByName", type: "string", desc: "Name of project creator" },
+                { name: "items[].taskCount", type: "int", desc: "Total tasks" },
+                { name: "items[].completedTaskCount", type: "int", desc: "Completed tasks" },
+                { name: "totalCount", type: "int", desc: "Total projects" },
+                { name: "page", type: "int", desc: "Current page" },
+                { name: "pageSize", type: "int", desc: "Page size" },
+                { name: "totalPages", type: "int", desc: "Total pages" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/projects/{id}",
+            auth: "JWT Required",
+            summary: "Get full details of a single project including recent tasks.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Project ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "projectId": 1,
+  "projectName": "Website Redesign",
+  "description": "Complete overhaul of company website",
+  "startDate": "2026-01-15",
+  "endDate": "2026-06-15",
+  "status": "Active",
+  "companyId": 1,
+  "createdBy": 1,
+  "createdByName": "Ahmed Admin",
+  "createdAt": "2026-01-10T09:00:00Z",
+  "tasks": [
+    {
+      "taskId": 1,
+      "title": "Design Homepage",
+      "status": "InProgress",
+      "priority": "High",
+      "assignedToName": "Sara Engineer"
+    }
+  ]
+}`
+            },
+            schema: [
+                { name: "projectId", type: "int", desc: "Project ID" },
+                { name: "projectName", type: "string", desc: "Project name" },
+                { name: "description", type: "string?", desc: "Description" },
+                { name: "startDate", type: "date", desc: "Start date" },
+                { name: "endDate", type: "date?", desc: "Target end date" },
+                { name: "status", type: "string", desc: "Project status" },
+                { name: "companyId", type: "int", desc: "Owning company" },
+                { name: "createdBy", type: "int", desc: "Creator user ID" },
+                { name: "createdByName", type: "string", desc: "Creator name" },
+                { name: "createdAt", type: "datetime", desc: "Creation timestamp" },
+                { name: "tasks", type: "array", desc: "Recent tasks in this project" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/projects",
+            auth: "JWT Required — Manager+",
+            summary: "Create a new project.",
+            params: [
+                { name: "projectName", type: "string", required: true, location: "body", desc: "Project name" },
+                { name: "description", type: "string", required: false, location: "body", desc: "Description" },
+                { name: "startDate", type: "date", required: true, location: "body", desc: "Start date" },
+                { name: "endDate", type: "date", required: false, location: "body", desc: "Target end date" }
+            ],
+            requestBody: `{
+  "projectName": "Mobile App v2",
+  "description": "Build the next version of the mobile app",
+  "startDate": "2026-04-01",
+  "endDate": "2026-09-30"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "projectId": 6,
+  "projectName": "Mobile App v2",
+  "message": "Project created successfully"
+}`
+            },
+            schema: [
+                { name: "projectId", type: "int", desc: "New project ID" },
+                { name: "projectName", type: "string", desc: "Project name" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/projects/{id}",
+            auth: "JWT Required — Manager+",
+            summary: "Update project details or status.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Project ID" },
+                { name: "projectName", type: "string", required: false, location: "body", desc: "New name" },
+                { name: "description", type: "string", required: false, location: "body", desc: "New description" },
+                { name: "startDate", type: "date", required: false, location: "body", desc: "New start date" },
+                { name: "endDate", type: "date", required: false, location: "body", desc: "New end date" },
+                { name: "status", type: "string", required: false, location: "body", desc: "New status" }
+            ],
+            requestBody: `{
+  "projectName": "Mobile App v2.1",
+  "status": "Completed"
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Project updated successfully" }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "DELETE",
+            path: "/api/projects/{id}",
+            auth: "JWT Required — Admin only",
+            summary: "Delete a project and all associated tasks.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Project ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{ "message": "Project deleted successfully" }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 5. TASKS
+// ──────────────────────────────────────────────
+{
+    group: "Tasks",
+    icon: "&#9989;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/tasks",
+            auth: "JWT Required",
+            summary: "List tasks. Employees see only their assigned tasks. Managers+ see all company tasks. Supports filters.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" },
+                { name: "projectId", type: "int", required: false, location: "query", desc: "Filter by project" },
+                { name: "status", type: "string", required: false, location: "query", desc: "Filter: Pending, InProgress, Completed, Overdue, Cancelled" },
+                { name: "priority", type: "string", required: false, location: "query", desc: "Filter: Low, Medium, High, Critical" },
+                { name: "assignedTo", type: "int", required: false, location: "query", desc: "Filter by assigned user" },
+                { name: "search", type: "string", required: false, location: "query", desc: "Search title/description" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "taskId": 1,
+      "title": "Design Homepage",
+      "description": "Create mockups for new homepage",
+      "status": "InProgress",
+      "priority": "High",
+      "projectId": 1,
+      "projectName": "Website Redesign",
+      "assignedTo": 5,
+      "assignedToName": "Sara Engineer",
+      "createdBy": 1,
+      "createdByName": "Ahmed Admin",
+      "dueDate": "2026-04-01",
+      "completionPercentage": 60,
+      "subtaskCount": 3,
+      "completedSubtaskCount": 2,
+      "createdAt": "2026-02-01T10:00:00Z"
+    }
+  ],
+  "totalCount": 42,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 3
+}`
+            },
+            schema: [
+                { name: "items[].taskId", type: "int", desc: "Task ID" },
+                { name: "items[].title", type: "string", desc: "Task title" },
+                { name: "items[].description", type: "string?", desc: "Task description" },
+                { name: "items[].status", type: "string", desc: "Pending | InProgress | Completed | Overdue | Cancelled" },
+                { name: "items[].priority", type: "string", desc: "Low | Medium | High | Critical" },
+                { name: "items[].projectId", type: "int", desc: "Parent project ID" },
+                { name: "items[].projectName", type: "string", desc: "Project name" },
+                { name: "items[].assignedTo", type: "int", desc: "Assigned user ID" },
+                { name: "items[].assignedToName", type: "string", desc: "Assigned user name" },
+                { name: "items[].createdBy", type: "int", desc: "Creator user ID" },
+                { name: "items[].createdByName", type: "string", desc: "Creator name" },
+                { name: "items[].dueDate", type: "date?", desc: "Due date" },
+                { name: "items[].completionPercentage", type: "int", desc: "0–100 progress" },
+                { name: "items[].subtaskCount", type: "int", desc: "Total subtasks" },
+                { name: "items[].completedSubtaskCount", type: "int", desc: "Completed subtasks" },
+                { name: "items[].createdAt", type: "datetime", desc: "Creation date" },
+                { name: "totalCount", type: "int", desc: "Total matching tasks" },
+                { name: "page", type: "int", desc: "Current page" },
+                { name: "pageSize", type: "int", desc: "Page size" },
+                { name: "totalPages", type: "int", desc: "Total pages" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/tasks/{id}",
+            auth: "JWT Required",
+            summary: "Get full task detail including subtasks, dependencies, progress history, and attachments.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Task ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "taskId": 1,
+  "title": "Design Homepage",
+  "description": "Create mockups for new homepage",
+  "status": "InProgress",
+  "priority": "High",
+  "projectId": 1,
+  "projectName": "Website Redesign",
+  "assignedTo": 5,
+  "assignedToName": "Sara Engineer",
+  "createdBy": 1,
+  "dueDate": "2026-04-01",
+  "completionPercentage": 60,
+  "subtasks": [
+    { "subtaskId": 1, "title": "Wireframe", "isCompleted": true },
+    { "subtaskId": 2, "title": "Color Scheme", "isCompleted": true },
+    { "subtaskId": 3, "title": "Final Mockup", "isCompleted": false }
+  ],
+  "dependencies": [
+    { "dependencyId": 1, "dependsOnTaskId": 3, "dependsOnTaskTitle": "Gather Requirements" }
+  ],
+  "progressHistory": [
+    { "progressId": 1, "percentage": 30, "notes": "Wireframe done", "updatedAt": "2026-02-15T10:00:00Z" },
+    { "progressId": 2, "percentage": 60, "notes": "Colors approved", "updatedAt": "2026-03-01T14:00:00Z" }
+  ],
+  "attachments": [
+    { "attachmentId": 1, "fileName": "homepage_v1.png", "filePath": "/uploads/tasks/1/homepage_v1.png", "uploadedAt": "2026-02-15T10:30:00Z" }
+  ]
+}`
+            },
+            schema: [
+                { name: "taskId", type: "int", desc: "Task ID" },
+                { name: "title", type: "string", desc: "Title" },
+                { name: "description", type: "string?", desc: "Description" },
+                { name: "status", type: "string", desc: "Task status" },
+                { name: "priority", type: "string", desc: "Priority level" },
+                { name: "projectId", type: "int", desc: "Project ID" },
+                { name: "projectName", type: "string", desc: "Project name" },
+                { name: "assignedTo", type: "int", desc: "Assigned user ID" },
+                { name: "assignedToName", type: "string", desc: "Assigned user name" },
+                { name: "createdBy", type: "int", desc: "Creator ID" },
+                { name: "dueDate", type: "date?", desc: "Due date" },
+                { name: "completionPercentage", type: "int", desc: "Current completion %" },
+                { name: "subtasks", type: "array", desc: "List of subtasks" },
+                { name: "subtasks[].subtaskId", type: "int", desc: "Subtask ID" },
+                { name: "subtasks[].title", type: "string", desc: "Subtask title" },
+                { name: "subtasks[].isCompleted", type: "bool", desc: "Completion status" },
+                { name: "dependencies", type: "array", desc: "Task dependencies" },
+                { name: "dependencies[].dependsOnTaskId", type: "int", desc: "Blocking task ID" },
+                { name: "dependencies[].dependsOnTaskTitle", type: "string", desc: "Blocking task title" },
+                { name: "progressHistory", type: "array", desc: "Progress log entries" },
+                { name: "attachments", type: "array", desc: "File attachments" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/tasks",
+            auth: "JWT Required — Supervisor+",
+            summary: "Create a new task and optionally assign it to a user.",
+            params: [
+                { name: "title", type: "string", required: true, location: "body", desc: "Task title" },
+                { name: "description", type: "string", required: false, location: "body", desc: "Description" },
+                { name: "projectId", type: "int", required: true, location: "body", desc: "Project ID" },
+                { name: "assignedTo", type: "int", required: false, location: "body", desc: "User ID to assign" },
+                { name: "priority", type: "string", required: false, location: "body", desc: "Low|Medium|High|Critical (default Medium)" },
+                { name: "dueDate", type: "date", required: false, location: "body", desc: "Due date" }
+            ],
+            requestBody: `{
+  "title": "Implement Login Page",
+  "description": "Build the login UI with validation",
+  "projectId": 1,
+  "assignedTo": 5,
+  "priority": "High",
+  "dueDate": "2026-04-15"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "taskId": 43,
+  "title": "Implement Login Page",
+  "message": "Task created successfully"
+}`
+            },
+            schema: [
+                { name: "taskId", type: "int", desc: "New task ID" },
+                { name: "title", type: "string", desc: "Task title" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/tasks/{id}",
+            auth: "JWT Required — Supervisor+",
+            summary: "Update task details, status, priority, or assignment.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Task ID" },
+                { name: "title", type: "string", required: false, location: "body", desc: "New title" },
+                { name: "description", type: "string", required: false, location: "body", desc: "New description" },
+                { name: "status", type: "string", required: false, location: "body", desc: "New status" },
+                { name: "priority", type: "string", required: false, location: "body", desc: "New priority" },
+                { name: "assignedTo", type: "int", required: false, location: "body", desc: "Reassign to user" },
+                { name: "dueDate", type: "date", required: false, location: "body", desc: "New due date" }
+            ],
+            requestBody: `{
+  "status": "Completed",
+  "completionPercentage": 100
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Task updated successfully" }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "DELETE",
+            path: "/api/tasks/{id}",
+            auth: "JWT Required — Manager+",
+            summary: "Delete a task and all related subtasks, attachments, progress, and dependencies.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Task ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{ "message": "Task deleted successfully" }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/tasks/{id}/progress",
+            auth: "JWT Required",
+            summary: "Submit a progress update for a task. Only the assigned user or Supervisor+ can update.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Task ID" },
+                { name: "percentage", type: "int", required: true, location: "body", desc: "Completion percentage (0–100)" },
+                { name: "notes", type: "string", required: false, location: "body", desc: "Progress notes" }
+            ],
+            requestBody: `{
+  "percentage": 80,
+  "notes": "Final review pending"
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "progressId": 5,
+  "taskId": 1,
+  "percentage": 80,
+  "message": "Progress updated"
+}`
+            },
+            schema: [
+                { name: "progressId", type: "int", desc: "New progress entry ID" },
+                { name: "taskId", type: "int", desc: "Task ID" },
+                { name: "percentage", type: "int", desc: "Updated percentage" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/tasks/{id}/subtasks",
+            auth: "JWT Required — Supervisor+",
+            summary: "Add a subtask to a task.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Parent task ID" },
+                { name: "title", type: "string", required: true, location: "body", desc: "Subtask title" }
+            ],
+            requestBody: `{
+  "title": "Write unit tests"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "subtaskId": 10,
+  "title": "Write unit tests",
+  "isCompleted": false
+}`
+            },
+            schema: [
+                { name: "subtaskId", type: "int", desc: "New subtask ID" },
+                { name: "title", type: "string", desc: "Subtask title" },
+                { name: "isCompleted", type: "bool", desc: "Always false on creation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/tasks/{taskId}/subtasks/{subtaskId}",
+            auth: "JWT Required",
+            summary: "Toggle subtask completion or update title.",
+            params: [
+                { name: "taskId", type: "int", required: true, location: "path", desc: "Parent task ID" },
+                { name: "subtaskId", type: "int", required: true, location: "path", desc: "Subtask ID" },
+                { name: "title", type: "string", required: false, location: "body", desc: "New title" },
+                { name: "isCompleted", type: "bool", required: false, location: "body", desc: "Completion status" }
+            ],
+            requestBody: `{
+  "isCompleted": true
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Subtask updated" }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 6. EVALUATIONS
+// ──────────────────────────────────────────────
+{
+    group: "Evaluations",
+    icon: "&#11088;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/evaluations",
+            auth: "JWT Required — Supervisor+",
+            summary: "List evaluations. Filter by user or date range.",
+            params: [
+                { name: "userId", type: "int", required: false, location: "query", desc: "Filter by evaluated user" },
+                { name: "fromDate", type: "date", required: false, location: "query", desc: "Start date" },
+                { name: "toDate", type: "date", required: false, location: "query", desc: "End date" },
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "evaluationId": 1,
+      "userId": 5,
+      "userName": "Sara Engineer",
+      "evaluatorId": 1,
+      "evaluatorName": "Ahmed Admin",
+      "score": 4.5,
+      "comments": "Excellent performance this quarter",
+      "evaluationDate": "2026-03-01",
+      "createdAt": "2026-03-01T10:00:00Z"
+    }
+  ],
+  "totalCount": 15,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].evaluationId", type: "int", desc: "Evaluation ID" },
+                { name: "items[].userId", type: "int", desc: "Evaluated user ID" },
+                { name: "items[].userName", type: "string", desc: "Evaluated user name" },
+                { name: "items[].evaluatorId", type: "int", desc: "Evaluator user ID" },
+                { name: "items[].evaluatorName", type: "string", desc: "Evaluator name" },
+                { name: "items[].score", type: "decimal", desc: "Score (0.0 – 5.0)" },
+                { name: "items[].comments", type: "string?", desc: "Evaluator comments" },
+                { name: "items[].evaluationDate", type: "date", desc: "Evaluation date" },
+                { name: "items[].createdAt", type: "datetime", desc: "Record creation time" },
+                { name: "totalCount", type: "int", desc: "Total evaluations" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/evaluations",
+            auth: "JWT Required — Supervisor+",
+            summary: "Create a new evaluation for a user.",
+            params: [
+                { name: "userId", type: "int", required: true, location: "body", desc: "User to evaluate" },
+                { name: "score", type: "decimal", required: true, location: "body", desc: "Score 0.0–5.0" },
+                { name: "comments", type: "string", required: false, location: "body", desc: "Comments" },
+                { name: "evaluationDate", type: "date", required: false, location: "body", desc: "Date (default today)" }
+            ],
+            requestBody: `{
+  "userId": 5,
+  "score": 4.5,
+  "comments": "Excellent performance this quarter"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "evaluationId": 16,
+  "message": "Evaluation created"
+}`
+            },
+            schema: [
+                { name: "evaluationId", type: "int", desc: "New evaluation ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 7. NOTIFICATIONS
+// ──────────────────────────────────────────────
+{
+    group: "Notifications",
+    icon: "&#128276;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/notifications",
+            auth: "JWT Required",
+            summary: "Get notifications for the authenticated user. Ordered by newest first.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" },
+                { name: "unreadOnly", type: "bool", required: false, location: "query", desc: "Show only unread" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "notificationId": 1,
+      "message": "You have been assigned a new task: Design Homepage",
+      "type": "TaskAssignment",
+      "isRead": false,
+      "referenceId": 1,
+      "referenceType": "Task",
+      "createdAt": "2026-03-18T09:00:00Z"
+    }
+  ],
+  "unreadCount": 5,
+  "totalCount": 30,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 2
+}`
+            },
+            schema: [
+                { name: "items[].notificationId", type: "int", desc: "Notification ID" },
+                { name: "items[].message", type: "string", desc: "Notification text" },
+                { name: "items[].type", type: "string", desc: "Type: TaskAssignment, StatusChange, Comment, Evaluation, etc." },
+                { name: "items[].isRead", type: "bool", desc: "Read status" },
+                { name: "items[].referenceId", type: "int?", desc: "ID of related resource" },
+                { name: "items[].referenceType", type: "string?", desc: "Type of related resource (Task, Project, etc.)" },
+                { name: "items[].createdAt", type: "datetime", desc: "Creation time" },
+                { name: "unreadCount", type: "int", desc: "Total unread notifications" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/notifications/unread-count",
+            auth: "JWT Required",
+            summary: "Get just the unread notification count (for badge display).",
+            params: [],
+            response: {
+                status: 200,
+                body: `{ "unreadCount": 5 }`
+            },
+            schema: [
+                { name: "unreadCount", type: "int", desc: "Number of unread notifications" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/notifications/{id}/read",
+            auth: "JWT Required",
+            summary: "Mark a single notification as read.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Notification ID" }
+            ],
+            response: {
+                status: 200,
+                body: `{ "message": "Notification marked as read" }`
+            },
+            schema: [ { name: "message", type: "string", desc: "Confirmation" } ]
+        },
+        {
+            method: "PUT",
+            path: "/api/notifications/read-all",
+            auth: "JWT Required",
+            summary: "Mark all notifications as read for the authenticated user.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{ "message": "All notifications marked as read", "count": 5 }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" },
+                { name: "count", type: "int", desc: "Number of notifications marked" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 8. BUGS
+// ──────────────────────────────────────────────
+{
+    group: "Bugs",
+    icon: "&#128027;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/bugs",
+            auth: "JWT Required",
+            summary: "List bugs, optionally filtered by task or status.",
+            params: [
+                { name: "taskId", type: "int", required: false, location: "query", desc: "Filter by task" },
+                { name: "status", type: "string", required: false, location: "query", desc: "Filter: Open, InProgress, Resolved, Closed" },
+                { name: "riskLevel", type: "string", required: false, location: "query", desc: "Filter: Low, Medium, High, Critical" },
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "bugId": 1,
+      "taskId": 3,
+      "taskTitle": "Implement Payment",
+      "reportedBy": 5,
+      "reportedByName": "Sara Engineer",
+      "bugDescription": "Payment gateway timeout on large orders",
+      "riskLevel": "High",
+      "status": "Open",
+      "createdAt": "2026-03-15T11:00:00Z",
+      "resolvedAt": null
+    }
+  ],
+  "totalCount": 8,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].bugId", type: "int", desc: "Bug ID" },
+                { name: "items[].taskId", type: "int", desc: "Related task ID" },
+                { name: "items[].taskTitle", type: "string", desc: "Related task title" },
+                { name: "items[].reportedBy", type: "int", desc: "Reporter user ID" },
+                { name: "items[].reportedByName", type: "string", desc: "Reporter name" },
+                { name: "items[].bugDescription", type: "string", desc: "Bug description" },
+                { name: "items[].riskLevel", type: "string", desc: "Low | Medium | High | Critical" },
+                { name: "items[].status", type: "string", desc: "Open | InProgress | Resolved | Closed" },
+                { name: "items[].createdAt", type: "datetime", desc: "Report date" },
+                { name: "items[].resolvedAt", type: "datetime?", desc: "Resolution date" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/bugs",
+            auth: "JWT Required",
+            summary: "Report a new bug for a task.",
+            params: [
+                { name: "taskId", type: "int", required: true, location: "body", desc: "Task ID" },
+                { name: "bugDescription", type: "string", required: true, location: "body", desc: "Description" },
+                { name: "riskLevel", type: "string", required: false, location: "body", desc: "Low|Medium|High|Critical (default Medium)" }
+            ],
+            requestBody: `{
+  "taskId": 3,
+  "bugDescription": "Payment gateway timeout on large orders",
+  "riskLevel": "High"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "bugId": 9,
+  "message": "Bug reported successfully"
+}`
+            },
+            schema: [
+                { name: "bugId", type: "int", desc: "New bug ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/bugs/{id}",
+            auth: "JWT Required — Supervisor+",
+            summary: "Update bug status, description, or risk level.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Bug ID" },
+                { name: "status", type: "string", required: false, location: "body", desc: "New status" },
+                { name: "bugDescription", type: "string", required: false, location: "body", desc: "Updated description" },
+                { name: "riskLevel", type: "string", required: false, location: "body", desc: "Updated risk level" }
+            ],
+            requestBody: `{
+  "status": "Resolved"
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Bug updated successfully" }`
+            },
+            schema: [ { name: "message", type: "string", desc: "Confirmation" } ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 9. COMMUNICATIONS
+// ──────────────────────────────────────────────
+{
+    group: "Communications",
+    icon: "&#128172;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/communications",
+            auth: "JWT Required",
+            summary: "List communication logs. Users see messages they sent or received.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" },
+                { name: "type", type: "string", required: false, location: "query", desc: "Filter: Email, SMS, InApp, Meeting" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "communicationId": 1,
+      "senderId": 1,
+      "senderName": "Ahmed Admin",
+      "recipientId": 5,
+      "recipientName": "Sara Engineer",
+      "type": "InApp",
+      "subject": "Task deadline reminder",
+      "message": "Please complete the homepage design by Friday",
+      "sentAt": "2026-03-17T14:00:00Z"
+    }
+  ],
+  "totalCount": 20,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].communicationId", type: "int", desc: "Communication log ID" },
+                { name: "items[].senderId", type: "int", desc: "Sender user ID" },
+                { name: "items[].senderName", type: "string", desc: "Sender name" },
+                { name: "items[].recipientId", type: "int", desc: "Recipient user ID" },
+                { name: "items[].recipientName", type: "string", desc: "Recipient name" },
+                { name: "items[].type", type: "string", desc: "Email | SMS | InApp | Meeting" },
+                { name: "items[].subject", type: "string?", desc: "Subject line" },
+                { name: "items[].message", type: "string", desc: "Message body" },
+                { name: "items[].sentAt", type: "datetime", desc: "Sent timestamp" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/communications",
+            auth: "JWT Required",
+            summary: "Send a communication / log a message.",
+            params: [
+                { name: "recipientId", type: "int", required: true, location: "body", desc: "Recipient user ID" },
+                { name: "type", type: "string", required: true, location: "body", desc: "Email|SMS|InApp|Meeting" },
+                { name: "subject", type: "string", required: false, location: "body", desc: "Subject" },
+                { name: "message", type: "string", required: true, location: "body", desc: "Message body" }
+            ],
+            requestBody: `{
+  "recipientId": 5,
+  "type": "InApp",
+  "subject": "Task deadline reminder",
+  "message": "Please complete the homepage design by Friday"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "communicationId": 21,
+  "message": "Communication sent"
+}`
+            },
+            schema: [
+                { name: "communicationId", type: "int", desc: "New log ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 10. CHAT
+// ──────────────────────────────────────────────
+{
+    group: "Chat",
+    icon: "&#128488;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/chat/threads",
+            auth: "JWT Required",
+            summary: "List chat threads for the authenticated user.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "threadId": 1,
+      "threadName": "Project Discussion",
+      "participantIds": [1, 5, 8],
+      "lastMessage": "Let's finalize the design",
+      "lastMessageAt": "2026-03-18T10:30:00Z",
+      "unreadCount": 2,
+      "createdAt": "2026-03-10T08:00:00Z"
+    }
+  ],
+  "totalCount": 5,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].threadId", type: "int", desc: "Thread ID" },
+                { name: "items[].threadName", type: "string?", desc: "Thread display name" },
+                { name: "items[].participantIds", type: "int[]", desc: "User IDs in the thread" },
+                { name: "items[].lastMessage", type: "string?", desc: "Preview of last message" },
+                { name: "items[].lastMessageAt", type: "datetime?", desc: "Last message timestamp" },
+                { name: "items[].unreadCount", type: "int", desc: "Unread messages for this user" },
+                { name: "items[].createdAt", type: "datetime", desc: "Thread creation time" }
+            ]
+        },
+        {
+            method: "GET",
+            path: "/api/chat/threads/{threadId}/messages",
+            auth: "JWT Required",
+            summary: "Get messages in a chat thread, newest first.",
+            params: [
+                { name: "threadId", type: "int", required: true, location: "path", desc: "Thread ID" },
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 50)" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "messageId": 1,
+      "senderId": 1,
+      "senderName": "Ahmed Admin",
+      "content": "Let's finalize the design",
+      "sentAt": "2026-03-18T10:30:00Z",
+      "isRead": true
+    }
+  ],
+  "totalCount": 100,
+  "page": 1,
+  "pageSize": 50,
+  "totalPages": 2
+}`
+            },
+            schema: [
+                { name: "items[].messageId", type: "int", desc: "Message ID" },
+                { name: "items[].senderId", type: "int", desc: "Sender user ID" },
+                { name: "items[].senderName", type: "string", desc: "Sender name" },
+                { name: "items[].content", type: "string", desc: "Message text" },
+                { name: "items[].sentAt", type: "datetime", desc: "Sent timestamp" },
+                { name: "items[].isRead", type: "bool", desc: "Read by current user" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/chat/threads",
+            auth: "JWT Required",
+            summary: "Create a new chat thread.",
+            params: [
+                { name: "threadName", type: "string", required: false, location: "body", desc: "Thread name" },
+                { name: "participantIds", type: "int[]", required: true, location: "body", desc: "List of user IDs" }
+            ],
+            requestBody: `{
+  "threadName": "Bug Fix Discussion",
+  "participantIds": [1, 5, 8]
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "threadId": 6,
+  "message": "Thread created"
+}`
+            },
+            schema: [
+                { name: "threadId", type: "int", desc: "New thread ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/chat/threads/{threadId}/messages",
+            auth: "JWT Required",
+            summary: "Send a message to a chat thread.",
+            params: [
+                { name: "threadId", type: "int", required: true, location: "path", desc: "Thread ID" },
+                { name: "content", type: "string", required: true, location: "body", desc: "Message content" }
+            ],
+            requestBody: `{
+  "content": "I found the root cause of the bug"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "messageId": 101,
+  "sentAt": "2026-03-18T11:00:00Z"
+}`
+            },
+            schema: [
+                { name: "messageId", type: "int", desc: "New message ID" },
+                { name: "sentAt", type: "datetime", desc: "Server timestamp" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 11. REPORTS
+// ──────────────────────────────────────────────
+{
+    group: "Reports",
+    icon: "&#128202;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/reports",
+            auth: "JWT Required — Manager+",
+            summary: "List generated reports for the company.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" },
+                { name: "type", type: "string", required: false, location: "query", desc: "Filter by report type" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "reportId": 1,
+      "title": "Q1 2026 Performance Report",
+      "type": "Performance",
+      "generatedBy": 1,
+      "generatedByName": "Ahmed Admin",
+      "filePath": "/reports/co1/report_20260315_100000.pdf",
+      "createdAt": "2026-03-15T10:00:00Z"
+    }
+  ],
+  "totalCount": 5,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}`
+            },
+            schema: [
+                { name: "items[].reportId", type: "int", desc: "Report ID" },
+                { name: "items[].title", type: "string", desc: "Report title" },
+                { name: "items[].type", type: "string", desc: "Report type (Performance, Task, Project, etc.)" },
+                { name: "items[].generatedBy", type: "int", desc: "User who generated" },
+                { name: "items[].generatedByName", type: "string", desc: "Generator name" },
+                { name: "items[].filePath", type: "string", desc: "File download path" },
+                { name: "items[].createdAt", type: "datetime", desc: "Generation date" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/reports",
+            auth: "JWT Required — Manager+",
+            summary: "Generate a new report.",
+            params: [
+                { name: "title", type: "string", required: true, location: "body", desc: "Report title" },
+                { name: "type", type: "string", required: true, location: "body", desc: "Report type" },
+                { name: "dateFrom", type: "date", required: false, location: "body", desc: "Period start" },
+                { name: "dateTo", type: "date", required: false, location: "body", desc: "Period end" }
+            ],
+            requestBody: `{
+  "title": "Q1 2026 Performance Report",
+  "type": "Performance",
+  "dateFrom": "2026-01-01",
+  "dateTo": "2026-03-31"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "reportId": 6,
+  "filePath": "/reports/co1/report_20260318_140000.pdf",
+  "message": "Report generated"
+}`
+            },
+            schema: [
+                { name: "reportId", type: "int", desc: "New report ID" },
+                { name: "filePath", type: "string", desc: "Download path" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 12. AUDIT LOGS
+// ──────────────────────────────────────────────
+{
+    group: "Audit Logs",
+    icon: "&#128270;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/auditlogs",
+            auth: "JWT Required — Admin",
+            summary: "List audit log entries with filtering and pagination.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 50)" },
+                { name: "userId", type: "int", required: false, location: "query", desc: "Filter by actor user ID" },
+                { name: "action", type: "string", required: false, location: "query", desc: "Filter by action (Create, Update, Delete, Login, etc.)" },
+                { name: "resourceType", type: "string", required: false, location: "query", desc: "Filter: Task, Project, User, etc." },
+                { name: "fromDate", type: "datetime", required: false, location: "query", desc: "Start date" },
+                { name: "toDate", type: "datetime", required: false, location: "query", desc: "End date" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "logId": 1,
+      "userId": 1,
+      "userName": "Ahmed Admin",
+      "action": "Create",
+      "resourceType": "Task",
+      "resourceId": 43,
+      "changesJson": "{\\"title\\":\\"Implement Login Page\\"}",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0...",
+      "timestamp": "2026-03-18T14:30:00Z"
+    }
+  ],
+  "totalCount": 500,
+  "page": 1,
+  "pageSize": 50,
+  "totalPages": 10
+}`
+            },
+            schema: [
+                { name: "items[].logId", type: "int", desc: "Log entry ID" },
+                { name: "items[].userId", type: "int", desc: "Actor user ID" },
+                { name: "items[].userName", type: "string", desc: "Actor name" },
+                { name: "items[].action", type: "string", desc: "Action performed" },
+                { name: "items[].resourceType", type: "string", desc: "Resource type" },
+                { name: "items[].resourceId", type: "int?", desc: "Affected resource ID" },
+                { name: "items[].changesJson", type: "string?", desc: "JSON diff of changes" },
+                { name: "items[].ipAddress", type: "string?", desc: "Client IP" },
+                { name: "items[].userAgent", type: "string?", desc: "Client User-Agent" },
+                { name: "items[].timestamp", type: "datetime", desc: "When the action occurred" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 13. DEPARTMENTS
+// ──────────────────────────────────────────────
+{
+    group: "Departments",
+    icon: "&#127970;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/departments",
+            auth: "JWT Required",
+            summary: "List all departments in the company.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "departments": [
+    {
+      "departmentId": 1,
+      "departmentName": "Engineering",
+      "companyId": 1,
+      "employeeCount": 15,
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}`
+            },
+            schema: [
+                { name: "departments[].departmentId", type: "int", desc: "Department ID" },
+                { name: "departments[].departmentName", type: "string", desc: "Department name" },
+                { name: "departments[].companyId", type: "int", desc: "Company ID" },
+                { name: "departments[].employeeCount", type: "int", desc: "Number of employees" },
+                { name: "departments[].createdAt", type: "datetime", desc: "Creation date" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/departments",
+            auth: "JWT Required — Admin",
+            summary: "Create a new department.",
+            params: [
+                { name: "departmentName", type: "string", required: true, location: "body", desc: "Department name" }
+            ],
+            requestBody: `{
+  "departmentName": "Marketing"
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "departmentId": 5,
+  "message": "Department created"
+}`
+            },
+            schema: [
+                { name: "departmentId", type: "int", desc: "New department ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/departments/{id}",
+            auth: "JWT Required — Admin",
+            summary: "Rename a department.",
+            params: [
+                { name: "id", type: "int", required: true, location: "path", desc: "Department ID" },
+                { name: "departmentName", type: "string", required: true, location: "body", desc: "New name" }
+            ],
+            requestBody: `{
+  "departmentName": "Marketing & Sales"
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Department updated" }`
+            },
+            schema: [ { name: "message", type: "string", desc: "Confirmation" } ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 14. POSITIONS
+// ──────────────────────────────────────────────
+{
+    group: "Positions",
+    icon: "&#128188;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/positions",
+            auth: "JWT Required",
+            summary: "List positions, optionally filtered by department.",
+            params: [
+                { name: "departmentId", type: "int", required: false, location: "query", desc: "Filter by department" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "positions": [
+    {
+      "positionId": 1,
+      "positionName": "CTO",
+      "departmentId": 1,
+      "departmentName": "Engineering",
+      "companyId": 1
+    }
+  ]
+}`
+            },
+            schema: [
+                { name: "positions[].positionId", type: "int", desc: "Position ID" },
+                { name: "positions[].positionName", type: "string", desc: "Position title" },
+                { name: "positions[].departmentId", type: "int?", desc: "Department ID" },
+                { name: "positions[].departmentName", type: "string?", desc: "Department name" },
+                { name: "positions[].companyId", type: "int", desc: "Company ID" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/positions",
+            auth: "JWT Required — Admin",
+            summary: "Create a new position.",
+            params: [
+                { name: "positionName", type: "string", required: true, location: "body", desc: "Position title" },
+                { name: "departmentId", type: "int", required: false, location: "body", desc: "Department (optional)" }
+            ],
+            requestBody: `{
+  "positionName": "Senior Developer",
+  "departmentId": 1
+}`,
+            response: {
+                status: 201,
+                body: `{
+  "positionId": 10,
+  "message": "Position created"
+}`
+            },
+            schema: [
+                { name: "positionId", type: "int", desc: "New position ID" },
+                { name: "message", type: "string", desc: "Confirmation" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 15. COMPANIES
+// ──────────────────────────────────────────────
+{
+    group: "Companies",
+    icon: "&#127963;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/companies/current",
+            auth: "JWT Required",
+            summary: "Get details of the current user's company.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "companyId": 1,
+  "companyName": "TaskTune Corp",
+  "settings": "{\\"timezone\\":\\"UTC+2\\",\\"language\\":\\"en\\"}",
+  "employeeCount": 25,
+  "departmentCount": 4,
+  "createdAt": "2026-01-01T00:00:00Z"
+}`
+            },
+            schema: [
+                { name: "companyId", type: "int", desc: "Company ID" },
+                { name: "companyName", type: "string", desc: "Company name" },
+                { name: "settings", type: "string?", desc: "JSON string of company settings" },
+                { name: "employeeCount", type: "int", desc: "Total employees" },
+                { name: "departmentCount", type: "int", desc: "Total departments" },
+                { name: "createdAt", type: "datetime", desc: "Company creation date" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/companies/current",
+            auth: "JWT Required — Admin",
+            summary: "Update company name or settings.",
+            params: [
+                { name: "companyName", type: "string", required: false, location: "body", desc: "New company name" },
+                { name: "settings", type: "string", required: false, location: "body", desc: "JSON settings" }
+            ],
+            requestBody: `{
+  "companyName": "TaskTune Solutions",
+  "settings": "{\\"timezone\\":\\"UTC+3\\",\\"language\\":\\"ar\\"}"
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Company updated" }`
+            },
+            schema: [ { name: "message", type: "string", desc: "Confirmation" } ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 16. ORG CHART
+// ──────────────────────────────────────────────
+{
+    group: "Org Chart",
+    icon: "&#127795;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/orgchart",
+            auth: "JWT Required",
+            summary: "Get the organizational chart for the current company.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "companyName": "TaskTune Corp",
+  "ceo": {
+    "userId": 2,
+    "fullName": "Nadia CEO",
+    "positionName": "CEO"
+  },
+  "departments": [
+    {
+      "departmentId": 1,
+      "departmentName": "Engineering",
+      "head": {
+        "userId": 3,
+        "fullName": "Omar Manager",
+        "positionName": "Engineering Manager"
+      },
+      "members": [
+        { "userId": 5, "fullName": "Sara Engineer", "positionName": "Developer" }
+      ]
+    }
+  ]
+}`
+            },
+            schema: [
+                { name: "companyName", type: "string", desc: "Company name" },
+                { name: "ceo", type: "object?", desc: "CEO user object" },
+                { name: "ceo.userId", type: "int", desc: "CEO user ID" },
+                { name: "ceo.fullName", type: "string", desc: "CEO full name" },
+                { name: "ceo.positionName", type: "string", desc: "Position title" },
+                { name: "departments", type: "array", desc: "Departments with members" },
+                { name: "departments[].head", type: "object?", desc: "Department head" },
+                { name: "departments[].members", type: "array", desc: "Department employees" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 17. ROLE PERMISSIONS
+// ──────────────────────────────────────────────
+{
+    group: "Role Permissions",
+    icon: "&#128272;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/rolepermissions",
+            auth: "JWT Required — Admin",
+            summary: "Get all role permissions for the company.",
+            params: [],
+            response: {
+                status: 200,
+                body: `{
+  "permissions": [
+    {
+      "rolePermissionId": 1,
+      "roleName": "Employee",
+      "permissionKey": "tasks.view_own",
+      "isGranted": true
+    },
+    {
+      "rolePermissionId": 2,
+      "roleName": "Employee",
+      "permissionKey": "tasks.create",
+      "isGranted": false
+    }
+  ]
+}`
+            },
+            schema: [
+                { name: "permissions[].rolePermissionId", type: "int", desc: "Permission record ID" },
+                { name: "permissions[].roleName", type: "string", desc: "Role name" },
+                { name: "permissions[].permissionKey", type: "string", desc: "Permission key (e.g. tasks.view_own)" },
+                { name: "permissions[].isGranted", type: "bool", desc: "Whether permission is granted" }
+            ]
+        },
+        {
+            method: "PUT",
+            path: "/api/rolepermissions",
+            auth: "JWT Required — Admin",
+            summary: "Bulk update role permissions.",
+            params: [
+                { name: "permissions", type: "array", required: true, location: "body", desc: "Array of {rolePermissionId, isGranted}" }
+            ],
+            requestBody: `{
+  "permissions": [
+    { "rolePermissionId": 2, "isGranted": true },
+    { "rolePermissionId": 5, "isGranted": false }
+  ]
+}`,
+            response: {
+                status: 200,
+                body: `{ "message": "Permissions updated", "count": 2 }`
+            },
+            schema: [
+                { name: "message", type: "string", desc: "Confirmation" },
+                { name: "count", type: "int", desc: "Number of permissions updated" }
+            ]
+        }
+    ]
+},
+
+// ──────────────────────────────────────────────
+// 18. AI
+// ──────────────────────────────────────────────
+{
+    group: "AI",
+    icon: "&#129302;",
+    endpoints: [
+        {
+            method: "GET",
+            path: "/api/ai/logs",
+            auth: "JWT Required — Admin",
+            summary: "List AI action logs.",
+            params: [
+                { name: "page", type: "int", required: false, location: "query", desc: "Page (default 1)" },
+                { name: "pageSize", type: "int", required: false, location: "query", desc: "Page size (default 20)" },
+                { name: "actionType", type: "string", required: false, location: "query", desc: "Filter by action type" }
+            ],
+            response: {
+                status: 200,
+                body: `{
+  "items": [
+    {
+      "aiLogId": 1,
+      "actionType": "TaskSuggestion",
+      "taskId": 5,
+      "userId": 3,
+      "inputData": "{\\"taskTitle\\":\\"Fix login bug\\"}",
+      "outputData": "{\\"suggestion\\":\\"Check OAuth token expiry\\"}",
+      "modelVersion": "gpt-4-turbo",
+      "timestamp": "2026-03-18T12:00:00Z"
+    }
+  ],
+  "totalCount": 50,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 3
+}`
+            },
+            schema: [
+                { name: "items[].aiLogId", type: "int", desc: "AI log ID" },
+                { name: "items[].actionType", type: "string", desc: "Action type (TaskSuggestion, Chatbot, etc.)" },
+                { name: "items[].taskId", type: "int?", desc: "Related task ID" },
+                { name: "items[].userId", type: "int", desc: "Requesting user ID" },
+                { name: "items[].inputData", type: "string", desc: "JSON input sent to AI" },
+                { name: "items[].outputData", type: "string", desc: "JSON response from AI" },
+                { name: "items[].modelVersion", type: "string", desc: "AI model used" },
+                { name: "items[].timestamp", type: "datetime", desc: "Action timestamp" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/ai/chatbot",
+            auth: "JWT Required",
+            summary: "Send a message to the AI chatbot (placeholder — returns mock response).",
+            params: [
+                { name: "message", type: "string", required: true, location: "body", desc: "User message" },
+                { name: "taskId", type: "int", required: false, location: "body", desc: "Optional task context" }
+            ],
+            requestBody: `{
+  "message": "How should I approach fixing this login bug?",
+  "taskId": 5
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "reply": "I'd suggest checking the OAuth token expiration logic first, then verifying the refresh token flow.",
+  "aiLogId": 51
+}`
+            },
+            schema: [
+                { name: "reply", type: "string", desc: "AI response text" },
+                { name: "aiLogId", type: "int", desc: "Logged action ID" }
+            ]
+        },
+        {
+            method: "POST",
+            path: "/api/ai/task-guidance",
+            auth: "JWT Required",
+            summary: "Get AI-generated guidance for a specific task (placeholder).",
+            params: [
+                { name: "taskId", type: "int", required: true, location: "body", desc: "Task to get guidance for" }
+            ],
+            requestBody: `{
+  "taskId": 5
+}`,
+            response: {
+                status: 200,
+                body: `{
+  "taskId": 5,
+  "guidance": "Break this task into 3 steps: 1) Reproduce the bug, 2) Check token handling, 3) Add error logging.",
+  "estimatedHours": 4,
+  "aiLogId": 52
+}`
+            },
+            schema: [
+                { name: "taskId", type: "int", desc: "Task ID" },
+                { name: "guidance", type: "string", desc: "AI-generated guidance text" },
+                { name: "estimatedHours", type: "decimal?", desc: "Estimated hours to complete" },
+                { name: "aiLogId", type: "int", desc: "Logged action ID" }
+            ]
+        }
+    ]
+}
+
+]; // END API DEFINITION
+
+// ============================================================
+//  RENDERING
+// ============================================================
+function renderSidebar() {
+    const nav = document.getElementById('sidebar-nav');
+    let html = `<div class="nav-link" onclick="scrollTo('hero')" id="nav-overview">Overview</div>`;
+    API.forEach((group, gi) => {
+        html += `<div class="nav-group-title">${group.icon} ${group.group}</div>`;
+        group.endpoints.forEach((ep, ei) => {
+            const id = `ep-${gi}-${ei}`;
+            const methodClass = `method-${ep.method}`;
+            html += `<div class="nav-link" onclick="scrollTo('${id}')" id="nav-${id}">
+                <span class="method-badge-sm ${methodClass}">${ep.method}</span>
+                <span>${ep.path.replace('/api/', '')}</span>
+            </div>`;
+        });
+    });
+    nav.innerHTML = html;
+}
+
+function renderContent() {
+    const content = document.getElementById('content');
+    let totalEndpoints = 0;
+    API.forEach(g => totalEndpoints += g.endpoints.length);
+
+    let html = `
+    <div class="hero" id="hero">
+        <h2>&#9889; TaskTune API Documentation</h2>
+        <p>Complete REST API reference for the TaskTune AI-powered task management platform. All endpoints return JSON.</p>
+        <div class="hero-stats">
+            <div class="hero-stat"><div class="num">${API.length}</div><div class="label">API Groups</div></div>
+            <div class="hero-stat"><div class="num">${totalEndpoints}</div><div class="label">Endpoints</div></div>
+            <div class="hero-stat"><div class="num">JWT</div><div class="label">Auth Method</div></div>
+            <div class="hero-stat"><div class="num">.NET 4.8</div><div class="label">Framework</div></div>
+        </div>
+    </div>
+
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+        <h3 style="color:#f0f6fc;margin-bottom:8px;">&#128273; Authentication</h3>
+        <p style="font-size:14px;color:#8b949e;">
+            Most endpoints require a JWT token. After calling <code style="color:#7ee787;">POST /api/auth/login</code>,
+            include the token in every request header:
+        </p>
+        <div class="code-block" style="margin-top:12px;">Authorization: Bearer eyJhbGciOiJIUzI1NiIs...</div>
+        <p style="font-size:13px;color:#8b949e;margin-top:8px;">
+            <strong style="color:#f0f6fc;">Role levels:</strong>
+            0 = Employee &nbsp;|&nbsp; 1 = TeamLead &nbsp;|&nbsp; 2 = Supervisor &nbsp;|&nbsp; 3 = Manager &nbsp;|&nbsp; 4 = CEO &nbsp;|&nbsp; 5 = Admin
+        </p>
+    </div>`;
+
+    API.forEach((group, gi) => {
+        html += `<div class="api-section">
+            <div class="api-section-header open" onclick="toggleSection(this)">
+                <h3>${group.icon} ${group.group}</h3>
+                <span class="count">${group.endpoints.length} endpoint${group.endpoints.length > 1 ? 's' : ''}</span>
+                <span class="arrow">&#9654;</span>
+            </div>
+            <div class="api-section-body open">`;
+
+        group.endpoints.forEach((ep, ei) => {
+            const id = `ep-${gi}-${ei}`;
+            const methodClass = `method-${ep.method}`;
+            const authBadge = ep.auth === 'Public'
+                ? '<span class="endpoint-auth public">Public</span>'
+                : `<span class="endpoint-auth">&#128274; ${ep.auth}</span>`;
+
+            html += `<div class="endpoint" id="${id}">
+                <div class="endpoint-header">
+                    <span class="method-badge ${methodClass}">${ep.method}</span>
+                    <span class="endpoint-path">${ep.path}</span>
+                    ${authBadge}
+                </div>
+                <div class="endpoint-desc">${ep.summary}</div>`;
+
+            // Parameters
+            if (ep.params && ep.params.length > 0) {
+                html += `<div class="endpoint-detail-title">Parameters</div>
+                <table class="param-table">
+                    <thead><tr><th>Name</th><th>Type</th><th>In</th><th>Required</th><th>Description</th></tr></thead>
+                    <tbody>`;
+                ep.params.forEach(p => {
+                    const reqBadge = p.required
+                        ? '<span class="param-required">Required</span>'
+                        : '<span class="param-optional">Optional</span>';
+                    html += `<tr>
+                        <td><span class="param-name">${p.name}</span></td>
+                        <td><span class="param-type">${p.type}</span></td>
+                        <td>${p.location}</td>
+                        <td>${reqBadge}</td>
+                        <td>${p.desc}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+
+            // Request body
+            if (ep.requestBody) {
+                html += `<div class="endpoint-detail-title">Request Body Example</div>
+                <div class="code-block">${syntaxHighlight(ep.requestBody)}</div>`;
+            }
+
+            // Success response
+            if (ep.response) {
+                html += `<div class="endpoint-detail-title">Response ${ep.response.status ? `(${ep.response.status})` : ''}</div>
+                <div class="code-block">${syntaxHighlight(ep.response.body)}</div>`;
+            }
+
+            // Error responses
+            if (ep.errorResponses && ep.errorResponses.length > 0) {
+                html += `<div class="endpoint-detail-title">Error Responses</div>
+                <table class="param-table">
+                    <thead><tr><th>Status</th><th>Description</th></tr></thead>
+                    <tbody>`;
+                ep.errorResponses.forEach(e => {
+                    html += `<tr><td><span class="method-badge method-DELETE" style="min-width:40px">${e.status}</span></td><td>${e.desc}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+
+            // Schema
+            if (ep.schema && ep.schema.length > 0) {
+                html += `<div class="endpoint-detail-title">Response Schema</div>
+                <table class="param-table">
+                    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+                    <tbody>`;
+                ep.schema.forEach(s => {
+                    html += `<tr>
+                        <td><span class="param-name">${s.name}</span></td>
+                        <td><span class="param-type">${s.type}</span></td>
+                        <td>${s.desc}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+
+            html += `</div>`; // endpoint
+        });
+
+        html += `</div></div>`; // section-body, section
+    });
+
+    content.innerHTML = html;
+}
+
+function toggleSection(header) {
+    header.classList.toggle('open');
+    const body = header.nextElementSibling;
+    body.classList.toggle('open');
+}
+
+function scrollTo(id) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Close mobile sidebar
+        document.getElementById('sidebar').classList.remove('open');
+    }
+}
+
+function syntaxHighlight(json) {
+    return json
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, function(match) {
+            if (/:$/.test(match)) {
+                return '<span class="json-key">' + match + '</span>';
+            }
+            return '<span class="json-string">' + match + '</span>';
+        })
+        .replace(/\b(-?\d+(\.\d+)?)\b/g, '<span class="json-number">$1</span>')
+        .replace(/\b(true|false)\b/g, '<span class="json-bool">$1</span>')
+        .replace(/\bnull\b/g, '<span class="json-null">null</span>');
+}
+
+async function checkHealth() {
+    const baseUrl = window.location.origin;
+    try {
+        const resp = await fetch(baseUrl + '/api/health');
+        const data = await resp.json();
+        alert('API Status: ' + data.status + '\n\nTry /api/health/db for database check.');
+    } catch (e) {
+        alert('Could not reach API.\n\n' + e.message);
+    }
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const baseUrl = window.location.origin + '/api';
+    document.getElementById('baseUrlDisplay').textContent = baseUrl;
+    renderSidebar();
+    renderContent();
+});
+    </script>
+</body>
+</html>

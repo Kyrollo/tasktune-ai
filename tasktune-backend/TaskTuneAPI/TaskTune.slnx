@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="TaskTune.API/TaskTune.API.csproj" />
+  <Project Path="TaskTune.Application/TaskTune.Application.csproj" />
+  <Project Path="TaskTune.Infrastructure/TaskTune.Infrastructure.csproj" />
+</Solution>

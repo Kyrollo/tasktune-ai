@@ -1,0 +1,74 @@
+﻿@{
+    ViewBag.Title = "Home";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<section class="hero">
+    <div class="hero-inner">
+        <div class="hero-badge">TaskTune API &nbsp;v1.0</div>
+        <h1>Welcome to<br /><span class="accent">TaskTuneAPI</span></h1>
+        <p class="hero-sub">
+            A high-performance REST API for intelligent task management,
+            employee tracking, and AI-driven insights —
+            built on ASP.NET Web API 2 with JWT authentication.
+        </p>
+        <div class="hero-cta">
+            <a href="/apis" class="btn btn-primary">🔌 Explore All APIs</a>
+            <a href="/api/health" class="btn btn-outline" target="_blank">⚡ Health Check</a>
+        </div>
+    </div>
+    <div class="hero-graphic">
+        <div class="orbit-ring r1"></div>
+        <div class="orbit-ring r2"></div>
+        <div class="orbit-ring r3"></div>
+        <div class="orbit-dot d1"></div>
+        <div class="orbit-dot d2"></div>
+        <div class="orbit-dot d3"></div>
+        <div class="core">API</div>
+    </div>
+</section>
+
+<section class="features">
+    <p class="section-title">WHAT'S INSIDE</p>
+    <div class="cards-grid">
+        <div class="feat-card fc-blue">
+            <div class="card-icon">🔐</div>
+            <h3>JWT Authentication</h3>
+            <p>Secure token-based auth with refresh tokens and role-based access control.</p>
+        </div>
+        <div class="feat-card fc-purple">
+            <div class="card-icon">📋</div>
+            <h3>Task Management</h3>
+            <p>Full CRUD for projects, tasks, and subtasks with priorities and deadlines.</p>
+        </div>
+        <div class="feat-card fc-green">
+            <div class="card-icon">👥</div>
+            <h3>Team Analytics</h3>
+            <p>Employee performance metrics, workload balancing, and productivity insights.</p>
+        </div>
+        <div class="feat-card fc-orange">
+            <div class="card-icon">🤖</div>
+            <h3>AI Insights</h3>
+            <p>AI-driven task assignment, deadline prediction, and bottleneck detection.</p>
+        </div>
+    </div>
+</section>
+
+<div class="stats-bar">
+    <div class="stat">
+        <span class="stat-num">JWT</span>
+        <span class="stat-label">Auth Method</span>
+    </div>
+    <div class="stat">
+        <span class="stat-num">4.8</span>
+        <span class="stat-label">.NET Framework</span>
+    </div>
+    <div class="stat">
+        <span class="stat-num">v2</span>
+        <span class="stat-label">Web API</span>
+    </div>
+    <div class="stat">
+        <span class="stat-num">SSL</span>
+        <span class="stat-label">Enforced</span>
+    </div>
+</div>
