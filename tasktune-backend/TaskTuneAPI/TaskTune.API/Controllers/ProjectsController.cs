@@ -86,7 +86,7 @@ public class ProjectsController : BaseApiController
             .FirstOrDefaultAsync(p => p.ProjectId == id && p.CompanyId == companyId.Value);
         if (project == null) return NotFound();
 
-        var visibleTasks = new List<Models.Task>();
+        var visibleTasks = new List<TaskTune.Infrastructure.Models.Task>();
         foreach (var task in project.Tasks)
         {
             if (await CanViewTaskAsync(_db, task.TaskId))
