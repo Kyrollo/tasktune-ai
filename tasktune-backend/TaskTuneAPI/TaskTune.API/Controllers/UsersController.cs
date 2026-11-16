@@ -20,12 +20,34 @@ public class UsersController : BaseApiController
     public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 25)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return Unauthorized();
+        var currentUserId = GetCurrentUserId();
+        var role = GetCurrentRole();
+        if (companyId == null || currentUserId == null || role == null) return Unauthorized();
         if (page < 1 || pageSize is < 1 or > 100)
             return BadRequest(new { message = "Page must be positive and pageSize must be between 1 and 100." });
 
         var query = _db.Users.AsNoTracking()
             .Where(u => u.CompanyId == companyId.Value && u.IsActive);
+
+        if (role.Equals("Employee", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(u => u.UserId == currentUserId.Value);
+        }
+        else if (role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase))
+        {
+            var departmentId = await _db.Users.AsNoTracking()
+                .Where(u => u.UserId == currentUserId.Value && u.CompanyId == companyId.Value)
+                .Select(u => u.DepartmentId)
+                .FirstOrDefaultAsync();
+            query = departmentId.HasValue
+                ? query.Where(u => u.DepartmentId == departmentId.Value || u.UserId == currentUserId.Value)
+                : query.Where(u => u.UserId == currentUserId.Value);
+        }
+        else if (!new[] { "Manager", "HR", "CEO", "Admin" }.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         var total = await query.CountAsync();
         var users = await query
             .Include(u => u.Department)
@@ -56,6 +78,7 @@ public class UsersController : BaseApiController
     {
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return Unauthorized();
+        if (!await CanViewEmployeeAsync(_db, id)) return NotFound();
 
         var user = await _db.Users.AsNoTracking()
             .Where(u => u.CompanyId == companyId.Value && u.UserId == id)
@@ -63,6 +86,48 @@ public class UsersController : BaseApiController
             .Include(u => u.Position)
             .FirstOrDefaultAsync();
         if (user == null) return NotFound();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var manager = await (
+            from line in _db.EmployeeReportingLines.AsNoTracking()
+            join person in _db.Users.AsNoTracking() on line.ManagerUserId equals person.UserId
+            where line.CompanyId == companyId.Value &&
+                  line.EmployeeUserId == id &&
+                  line.IsPrimary &&
+                  line.RelationshipType == "line" &&
+                  line.EffectiveFrom <= today &&
+                  (!line.EffectiveTo.HasValue || line.EffectiveTo >= today) &&
+                  person.CompanyId == companyId.Value &&
+                  person.IsActive
+            select new
+            {
+                UserId = person.UserId,
+                FullName = person.FullName ?? (person.FirstName + " " + person.LastName),
+                person.Email,
+                Position = person.Position != null ? person.Position.PositionTitle : null
+            })
+            .FirstOrDefaultAsync();
+
+        var directReports = await (
+            from line in _db.EmployeeReportingLines.AsNoTracking()
+            join person in _db.Users.AsNoTracking() on line.EmployeeUserId equals person.UserId
+            where line.CompanyId == companyId.Value &&
+                  line.ManagerUserId == id &&
+                  line.IsPrimary &&
+                  line.RelationshipType == "line" &&
+                  line.EffectiveFrom <= today &&
+                  (!line.EffectiveTo.HasValue || line.EffectiveTo >= today) &&
+                  person.CompanyId == companyId.Value &&
+                  person.IsActive
+            orderby person.LastName, person.FirstName
+            select new
+            {
+                UserId = person.UserId,
+                FullName = person.FullName ?? (person.FirstName + " " + person.LastName),
+                Position = person.Position != null ? person.Position.PositionTitle : null,
+                Department = person.Department != null ? person.Department.DepartmentName : null
+            })
+            .ToListAsync();
 
         return Ok(new
         {
@@ -75,8 +140,16 @@ public class UsersController : BaseApiController
             user.Role,
             user.IsActive,
             Status = user.IsActive ? "Active" : "Inactive",
+            user.CreatedAt,
+            user.UpdatedAt,
+            user.LastLogin,
+            DepartmentId = user.DepartmentId,
             Department = user.Department?.DepartmentName,
-            Position = user.Position?.PositionTitle
+            PositionId = user.PositionId,
+            Position = user.Position?.PositionTitle,
+            Manager = manager,
+            DirectReports = directReports,
+            DirectReportCount = directReports.Count
         });
     }
 
@@ -91,17 +164,19 @@ public class UsersController : BaseApiController
             return BadRequest(new { message = "Email and password are required." });
         if (dto.Password.Length < 12)
             return BadRequest(new { message = "Password must be at least 12 characters." });
+        if (dto.Role > 4)
+            return BadRequest(new { message = "Tenant administrators cannot create platform-admin accounts." });
 
-        if (await _db.Users.AnyAsync(u => u.Email == dto.Email.Trim()))
+        var email = dto.Email.Trim().ToLowerInvariant();
+        if (await _db.Users.AnyAsync(u => u.Email == email))
             return Conflict(new { message = "Email already exists." });
         if (!await ReferencesBelongToCompanyAsync(companyId.Value, dto.DepartmentId, dto.PositionId))
             return BadRequest(new { message = "Department or position does not belong to this company." });
 
-        // Tenant ownership always comes from the authenticated token, never the request DTO.
         var user = new User
         {
             CompanyId = companyId.Value,
-            Email = dto.Email.Trim().ToLowerInvariant(),
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             FirstName = dto.FirstName.Trim(),
             LastName = dto.LastName.Trim(),
@@ -137,6 +212,12 @@ public class UsersController : BaseApiController
         if (!await ReferencesBelongToCompanyAsync(companyId.Value, dto.DepartmentId, dto.PositionId))
             return BadRequest(new { message = "Department or position does not belong to this company." });
 
+        if (dto.PositionId.HasValue && dto.DepartmentId.HasValue &&
+            !await _db.Positions.AnyAsync(p => p.PositionId == dto.PositionId.Value &&
+                                               p.DepartmentId == dto.DepartmentId.Value &&
+                                               p.CompanyId == companyId.Value))
+            return BadRequest(new { message = "The selected position does not belong to the selected department." });
+
         var before = new { user.FirstName, user.LastName, user.Phone, user.DepartmentId, user.PositionId };
         user.FirstName = dto.FirstName.Trim();
         user.LastName = dto.LastName.Trim();
@@ -171,8 +252,17 @@ public class UsersController : BaseApiController
         user.RefreshToken = null;
         user.RefreshTokenExpiry = null;
         user.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
 
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var activeLines = await _db.EmployeeReportingLines
+            .Where(x => x.CompanyId == companyId.Value &&
+                        (x.EmployeeUserId == id || x.ManagerUserId == id) &&
+                        (!x.EffectiveTo.HasValue || x.EffectiveTo >= today))
+            .ToListAsync();
+        foreach (var line in activeLines)
+            line.EffectiveTo = today;
+
+        await _db.SaveChangesAsync();
         await AuditLogWriter.WriteAsync(_db, HttpContext, currentUserId, "DEACTIVATE", "User", user.UserId,
             before: before, after: new { user.IsActive });
         return NoContent();
