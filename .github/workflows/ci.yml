@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   backend-build:
-    name: .NET API build
+    name: .NET 10 API build and tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
       - name: Restore and build API
         run: dotnet build tasktune-backend/TaskTuneAPI/TaskTune.API/TaskTune.API.csproj --configuration Release
       - name: Run API security regression tests
