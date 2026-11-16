@@ -162,7 +162,7 @@ public class AttachmentsController : BaseApiController
         if (!System.IO.File.Exists(absolutePath)) return NotFound();
 
         Response.Headers.ContentDisposition = $"attachment; filename*=UTF-8''{Uri.EscapeDataString(attachment.FileName)}";
-        Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
         return PhysicalFile(absolutePath, attachment.MimeType, enableRangeProcessing: true);
     }
 
