@@ -34,6 +34,7 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetTask(int id)
     {
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var task = await _taskService.GetByIdAsync(id);
         if (task == null) return NotFound();
         return Ok(task);
@@ -58,9 +59,12 @@ public class TasksController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] CreateTaskDto dto)
     {
         var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var before = await _taskService.GetByIdAsync(id);
         var task = await _taskService.UpdateAsync(id, dto);
         if (task == null) return NotFound();
@@ -81,6 +85,8 @@ public class TasksController : BaseApiController
     public async Task<IActionResult> DeleteTask(int id)
     {
         var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var before = await _taskService.GetByIdAsync(id);
         if (!await _taskService.DeleteAsync(id)) return NotFound();
         await AuditLogWriter.WriteAsync(
@@ -98,6 +104,7 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}/progress")]
     public async Task<IActionResult> GetProgress(int id)
     {
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var progress = await _taskService.GetProgressAsync(id);
         return Ok(progress);
     }
@@ -107,6 +114,7 @@ public class TasksController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         if (!await _taskService.SubmitProgressAsync(id, dto, userId.Value)) return NotFound();
         await AuditLogWriter.WriteAsync(
             _db,
@@ -128,6 +136,7 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}/guidance")]
     public async Task<IActionResult> GetGuidance(int id)
     {
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var latest = await _db.AIActionsLogs
             .Where(a => a.ActionType == 1 && a.TaskId == id)
             .OrderByDescending(a => a.Timestamp)
@@ -143,12 +152,8 @@ public class TasksController : BaseApiController
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
-        var task = await _db.Tasks
-            .Include(t => t.Project)
-            .Include(t => t.Subtasks)
-            .Include(t => t.TaskDependencyTasks)
-                .ThenInclude(td => td.DependsOnTask)
-            .FirstOrDefaultAsync(t => t.TaskId == id);
+        var task = await FindAccessibleTaskAsync(id);
+
         if (task == null) return NotFound();
 
         var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
@@ -199,8 +204,7 @@ public class TasksController : BaseApiController
             var response = await http.PostAsJsonAsync($"{agentBaseUrl.TrimEnd('/')}{endpoint}", payload);
             if (!response.IsSuccessStatusCode)
             {
-                var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "AI agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "AI agent returned an error.", traceId = HttpContext.TraceIdentifier });
             }
             var result = await response.Content.ReadFromJsonAsync<object>() ?? new { guidance_text = "", suggested_subtasks = Array.Empty<string>() };
             if (userId != null)
@@ -210,7 +214,7 @@ public class TasksController : BaseApiController
                     ActionType = 1,
                     TaskId = id,
                     UserId = userId.Value,
-                    InputData = JsonSerializer.Serialize(payload),
+                    InputData = JsonSerializer.Serialize(new { taskId = id, companyId = companyId.Value, action = "task_guidance" }),
                     OutputData = JsonSerializer.Serialize(result),
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
@@ -229,7 +233,7 @@ public class TasksController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { message = "Failed to reach AI guidance agent.", detail = ex.Message });
+            return StatusCode(502, new { message = "Failed to reach AI guidance agent.", traceId = HttpContext.TraceIdentifier });
         }
     }
 
@@ -279,8 +283,7 @@ public class TasksController : BaseApiController
             var response = await http.PostAsJsonAsync($"{agentBaseUrl.TrimEnd('/')}{endpoint}", payload);
             if (!response.IsSuccessStatusCode)
             {
-                var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "AI agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "AI agent returned an error.", traceId = HttpContext.TraceIdentifier });
             }
             var result = await response.Content.ReadFromJsonAsync<object>();
             if (userId != null && result != null)
@@ -289,7 +292,7 @@ public class TasksController : BaseApiController
                 {
                     ActionType = 1,
                     UserId = userId.Value,
-                    InputData = JsonSerializer.Serialize(payload),
+                    InputData = JsonSerializer.Serialize(new { companyId = companyId.Value, action = "task_recommendation" }),
                     OutputData = JsonSerializer.Serialize(result),
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
@@ -310,9 +313,7 @@ public class TasksController : BaseApiController
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
-        var task = await _db.Tasks
-            .Include(t => t.TaskProgresses)
-            .FirstOrDefaultAsync(t => t.TaskId == id);
+        var task = await FindAccessibleTaskAsync(id);
         if (task == null) return NotFound();
 
         var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
@@ -387,8 +388,7 @@ public class TasksController : BaseApiController
             var response = await http.PostAsJsonAsync($"{agentBaseUrl.TrimEnd('/')}{endpoint}", taskPayload);
             if (!response.IsSuccessStatusCode)
             {
-                var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "AI progress agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "AI progress agent returned an error.", traceId = HttpContext.TraceIdentifier });
             }
             var result = await response.Content.ReadFromJsonAsync<object>();
             if (userId != null && result != null)
@@ -398,7 +398,7 @@ public class TasksController : BaseApiController
                     ActionType = 2,
                     TaskId = id,
                     UserId = userId.Value,
-                    InputData = JsonSerializer.Serialize(taskPayload),
+                    InputData = JsonSerializer.Serialize(new { taskId = id, companyId = companyId.Value, action = "progress_analysis" }),
                     OutputData = JsonSerializer.Serialize(result),
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
@@ -417,13 +417,14 @@ public class TasksController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { message = "Failed to reach AI progress agent.", detail = ex.Message });
+            return StatusCode(502, new { message = "Failed to reach AI progress agent.", traceId = HttpContext.TraceIdentifier });
         }
     }
 
     [HttpGet("{id:int}/progress/ai-analysis")]
     public async Task<IActionResult> GetLatestProgressAnalysis(int id)
     {
+        if (await FindAccessibleTaskAsync(id) == null) return NotFound();
         var latest = await _db.AIActionsLogs
             .Where(a => a.ActionType == 2 && a.TaskId == id)
             .OrderByDescending(a => a.Timestamp)
@@ -431,6 +432,51 @@ public class TasksController : BaseApiController
             .FirstOrDefaultAsync();
 
         return Ok(ParseOutput(latest) ?? new { });
+    }
+
+
+    private async Task<TaskTune.Infrastructure.Models.Task?> FindAccessibleTaskAsync(int id)
+    {
+        var userId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        var role = GetCurrentRole();
+        if (userId == null || companyId == null || string.IsNullOrWhiteSpace(role))
+            return null;
+
+        var currentUser = await _db.Users.AsNoTracking()
+            .Where(u => u.UserId == userId.Value && u.CompanyId == companyId.Value && u.IsActive)
+            .Select(u => new { u.DepartmentId })
+            .FirstOrDefaultAsync();
+        if (currentUser == null) return null;
+
+        var query = _db.Tasks
+            .Include(t => t.Project)
+            .Include(t => t.Subtasks)
+            .Include(t => t.TaskProgresses)
+            .Include(t => t.TaskDependencyTasks)
+                .ThenInclude(td => td.DependsOnTask)
+            .Where(t => t.TaskId == id && t.Project.CompanyId == companyId.Value);
+
+        if (role.Equals("Employee", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value);
+        }
+        else if (role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(t =>
+                t.CreatedBy == userId.Value ||
+                t.AssignedTo == userId.Value ||
+                (currentUser.DepartmentId.HasValue &&
+                 t.AssignedToNavigation != null &&
+                 t.AssignedToNavigation.CompanyId == companyId.Value &&
+                 t.AssignedToNavigation.DepartmentId == currentUser.DepartmentId.Value));
+        }
+        else if (!new[] { "Manager", "HR", "CEO", "Admin" }.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return await query.FirstOrDefaultAsync();
     }
 
     private static object? ParseOutput(string? outputData)
