@@ -33,3 +33,15 @@ logs/
 Thumbs.db
 git_status.txt
 branch_log.txt
+
+# ── .NET user and workload caches ──
+.dotnet/
+**/.dotnet/
+
+# ── Vite caches ──
+**/.vite/
+
+# ── Local environment configuration ──
+.env
+.env.*
+!.env.example
