@@ -2,4 +2,5 @@
   <Project Path="TaskTune.API/TaskTune.API.csproj" />
   <Project Path="TaskTune.Application/TaskTune.Application.csproj" />
   <Project Path="TaskTune.Infrastructure/TaskTune.Infrastructure.csproj" />
+  <Project Path="TaskTune.Tests/TaskTune.Tests.csproj" />
 </Solution>
