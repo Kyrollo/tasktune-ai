@@ -194,9 +194,10 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
 
         sql = StripMarkdown(sql).Trim();
 
-        // This is deliberately a narrow SQL subset, not a general-purpose SQL sandbox.
-        // Every query must read exactly one approved, pre-joined view. Joins, CTEs,
-        // subqueries and comma joins are blocked until a proper SQL AST policy is deployed.
+        // Deliberately allow a narrow SQL subset, not arbitrary model-generated SQL.
+        // One query may read one approved pre-joined view only. Joins, CTEs,
+        // subqueries and comma joins are blocked because outer row filters alone
+        // cannot prove tenant isolation for multiple underlying data sources.
         if (sql.Contains(';') || sql.Contains("--", StringComparison.Ordinal) ||
             sql.Contains("/*", StringComparison.Ordinal) || sql.Contains("*/", StringComparison.Ordinal))
         {
@@ -204,27 +205,27 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
             return false;
         }
 
-        if (!Regex.IsMatch(sql, @"^\\s*select\\b", RegexOptions.IgnoreCase))
+        if (!Regex.IsMatch(sql, @"^\s*select\b", RegexOptions.IgnoreCase))
         {
             error = "Only a single SELECT statement is allowed.";
             return false;
         }
 
-        if (Regex.Matches(sql, @"\\bselect\\b", RegexOptions.IgnoreCase).Count != 1)
+        if (Regex.Matches(sql, @"\bselect\b", RegexOptions.IgnoreCase).Count != 1)
         {
             error = "Nested SELECT statements and CTEs are not allowed.";
             return false;
         }
 
-        var blockedTokens = @"\\b(insert|update|delete|drop|alter|create|merge|truncate|exec|execute|union|intersect|except|into|output|waitfor|openrowset|openquery|opendatasource|bulk|backup|restore|dbcc|reconfigure|shutdown|use|grant|revoke|deny|cross|outer|apply|pivot|unpivot)\\b|\\bxp_\\w+|\\bsys\\.|information_schema|tempdb|##?\\w+";
+        const string blockedTokens = @"\b(insert|update|delete|drop|alter|create|merge|truncate|exec|execute|union|intersect|except|into|output|waitfor|openrowset|openquery|opendatasource|bulk|backup|restore|dbcc|reconfigure|shutdown|use|grant|revoke|deny|cross|outer|apply|pivot|unpivot)\b|\bxp_\w+|\bsys\.|information_schema|tempdb|##?\w+";
         if (Regex.IsMatch(sql, blockedTokens, RegexOptions.IgnoreCase))
         {
             error = "The query contains a forbidden SQL operation or source.";
             return false;
         }
 
-        if (Regex.IsMatch(sql, @"\\bjoin\\b|\\bwith\\b", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(sql, @"\\bfrom\\s*\\(", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(sql, @"\bjoin\b|\bwith\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(sql, @"\bfrom\s*\(", RegexOptions.IgnoreCase))
         {
             error = "Joins, CTEs and derived tables are not allowed. Query one approved view at a time.";
             return false;
@@ -232,7 +233,7 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
 
         var fromMatches = Regex.Matches(
             sql,
-            @"\\bfrom\\s+((?:\\[?dbo\\]?\\.)?\\[?([A-Za-z_][A-Za-z0-9_]*)\\]?)",
+            @"\bfrom\s+((?:\[?dbo\]?\.)?\[?([A-Za-z_][A-Za-z0-9_]*)\]?)",
             RegexOptions.IgnoreCase);
 
         if (fromMatches.Count != 1)
@@ -250,7 +251,7 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
 
         var fromClause = Regex.Match(
             sql,
-            @"\\bfrom\\b([\\s\\S]*?)(?:\\bwhere\\b|\\bgroup\\s+by\\b|\\bhaving\\b|\\border\\s+by\\b|$)",
+            @"\bfrom\b([\s\S]*?)(?:\bwhere\b|\bgroup\s+by\b|\bhaving\b|\border\s+by\b|$)",
             RegexOptions.IgnoreCase);
         if (fromClause.Success && fromClause.Groups[1].Value.Contains(','))
         {
@@ -278,6 +279,7 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
         int maxRows = 25)
     {
         sql = StripMarkdown(sql).Trim();
+        maxRows = Math.Clamp(maxRows, 1, 100);
         sql = Regex.Replace(sql, @"\border\s+by\b[\s\S]*$", string.Empty, RegexOptions.IgnoreCase).Trim();
 
         if (!IsQueryAllowed(sql, role, out var validationError))
