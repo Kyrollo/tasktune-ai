@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import hmac
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 _agents_dir = Path(__file__).resolve().parent.parent
@@ -26,43 +27,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_AGENT_SERVICE_TOKEN = os.environ.get("AGENT_SERVICE_TOKEN", "")
+
+async def require_agent_service_token(x_agent_internal_token: str = Header(default="")):
+    if not _AGENT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Agent service authentication is not configured.")
+    if not hmac.compare_digest(x_agent_internal_token, _AGENT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized agent service caller.")
+
+
 app = FastAPI(
     title="TaskTune AI — Email Recommendation Agent",
     description="Drafts internal communication recommendations.",
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.post("/api/email/recommendation", response_model=EmailRecommendationResponse, tags=["Email"])
+@app.post("/api/email/recommendation", response_model=EmailRecommendationResponse, tags=["Email"], dependencies=[Depends(require_agent_service_token)])
 async def recommend_email(request: EmailRecommendationRequest):
     try:
         result = run_email_recommendation(request)
         return EmailRecommendationResponse(**result)
     except Exception as exc:
-        logger.exception("Email recommendation failed, providing executive fallback recommendation")
-        return EmailRecommendationResponse(
-            subject="Company-Wide Announcement: TaskTune AI Multi-Agent Platform Launch",
-            body=(
-                "Dear Team,\n\n"
-                "We are thrilled to formally announce the launch of our TaskTune AI Multi-Agent Work Execution Platform. "
-                "All 5 autonomous microservices—Chatbot, Task Guidance, Progress Tracking, AI Reports, and Email Communications—are now live.\n\n"
-                "Interactive hands-on training sessions will be held this Wednesday at 10:00 AM UTC. Please log into your dashboard to explore your personalized AI-driven work recommendations.\n\n"
-                "Best regards,\n"
-                "Executive Leadership Team\n"
-                "TaskTune AI"
-            ),
-            cc=["leadership@tasktune.ai"],
-            send_to=["all-company@tasktune.ai"],
-            rationale="Professional and inspiring tone aligned with executive milestone announcement guidelines."
-        )
+        logger.exception("Email recommendation failed")
+        raise HTTPException(status_code=503, detail="Email drafting is temporarily unavailable.") from exc
 
 
 @app.get("/api/health")
