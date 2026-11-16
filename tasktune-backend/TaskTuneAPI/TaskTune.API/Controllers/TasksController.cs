@@ -164,6 +164,10 @@ public class TasksController : BaseApiController
         }
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
         var payload = new
         {
             task_name = task.TaskName,
@@ -253,6 +257,10 @@ public class TasksController : BaseApiController
         }
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
         var payload = new
         {
             task_name = request.TaskName ?? "",
@@ -379,6 +387,10 @@ public class TasksController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
         try
         {
             var agentBaseUrl = string.IsNullOrWhiteSpace(agentConfig.BaseUrl)
