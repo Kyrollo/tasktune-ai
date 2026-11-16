@@ -258,12 +258,19 @@ public static class AIConfigurationStore
             }
             return config;
         }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (CryptographicException)
+        {
+            throw new InvalidOperationException("An encrypted AI provider key could not be decrypted. Verify AI_PROVIDER_ENCRYPTION_KEY and restore the original key if it changed.");
+        }
         catch
         {
             return null;
         }
     }
-
 
     private const string EncryptedApiKeyPrefix = "enc:v1:";
 
