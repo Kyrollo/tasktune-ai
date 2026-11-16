@@ -194,46 +194,75 @@ NotificationTypeName, RelatedTaskId, RelatedTask, ReadStatus, SentAt
 
         sql = StripMarkdown(sql).Trim();
 
-        if (sql.Contains(';'))
+        // This is deliberately a narrow SQL subset, not a general-purpose SQL sandbox.
+        // Every query must read exactly one approved, pre-joined view. Joins, CTEs,
+        // subqueries and comma joins are blocked until a proper SQL AST policy is deployed.
+        if (sql.Contains(';') || sql.Contains("--", StringComparison.Ordinal) ||
+            sql.Contains("/*", StringComparison.Ordinal) || sql.Contains("*/", StringComparison.Ordinal))
         {
-            error = "Multiple SQL statements are not allowed.";
+            error = "Statement separators and SQL comments are not allowed.";
             return false;
         }
 
-        if (!Regex.IsMatch(sql, @"^\s*(select|with)\b", RegexOptions.IgnoreCase))
+        if (!Regex.IsMatch(sql, @"^\\s*select\\b", RegexOptions.IgnoreCase))
         {
-            error = "Only SELECT queries are allowed.";
+            error = "Only a single SELECT statement is allowed.";
             return false;
         }
 
-        if (Regex.IsMatch(sql, @"\b(insert|update|delete|drop|alter|create|merge|truncate|exec|execute)\b", RegexOptions.IgnoreCase))
+        if (Regex.Matches(sql, @"\\bselect\\b", RegexOptions.IgnoreCase).Count != 1)
         {
-            error = "Write operations are not allowed.";
+            error = "Nested SELECT statements and CTEs are not allowed.";
             return false;
         }
 
-        var matches = Regex.Matches(sql, @"\b(?:from|join)\s+(?:\[?dbo\]?\.)?\[?(vw_Chatbot\w+)\]?", RegexOptions.IgnoreCase);
-        if (matches.Count == 0)
+        var blockedTokens = @"\\b(insert|update|delete|drop|alter|create|merge|truncate|exec|execute|union|intersect|except|into|output|waitfor|openrowset|openquery|opendatasource|bulk|backup|restore|dbcc|reconfigure|shutdown|use|grant|revoke|deny|cross|outer|apply|pivot|unpivot)\\b|\\bxp_\\w+|\\bsys\\.|information_schema|tempdb|##?\\w+";
+        if (Regex.IsMatch(sql, blockedTokens, RegexOptions.IgnoreCase))
         {
-            error = "Queries must read from the approved chatbot views only.";
+            error = "The query contains a forbidden SQL operation or source.";
             return false;
         }
 
-        foreach (Match match in matches)
+        if (Regex.IsMatch(sql, @"\\bjoin\\b|\\bwith\\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(sql, @"\\bfrom\\s*\\(", RegexOptions.IgnoreCase))
         {
-            var name = match.Groups[1].Value;
-            if (!AllowedViews.Contains(name, StringComparer.OrdinalIgnoreCase))
-            {
-                error = $"The view '{name}' is not allowed.";
-                return false;
-            }
+            error = "Joins, CTEs and derived tables are not allowed. Query one approved view at a time.";
+            return false;
+        }
 
-            if (string.Equals(role, "HR", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(name, "vw_ChatbotTaskFull", StringComparison.OrdinalIgnoreCase))
-            {
-                error = "HR access cannot query task-detail rows.";
-                return false;
-            }
+        var fromMatches = Regex.Matches(
+            sql,
+            @"\\bfrom\\s+((?:\\[?dbo\\]?\\.)?\\[?([A-Za-z_][A-Za-z0-9_]*)\\]?)",
+            RegexOptions.IgnoreCase);
+
+        if (fromMatches.Count != 1)
+        {
+            error = "A query must reference exactly one approved chatbot view.";
+            return false;
+        }
+
+        var sourceName = fromMatches[0].Groups[2].Value;
+        if (!AllowedViews.Contains(sourceName, StringComparer.OrdinalIgnoreCase))
+        {
+            error = $"The source '{sourceName}' is not an approved chatbot view.";
+            return false;
+        }
+
+        var fromClause = Regex.Match(
+            sql,
+            @"\\bfrom\\b([\\s\\S]*?)(?:\\bwhere\\b|\\bgroup\\s+by\\b|\\bhaving\\b|\\border\\s+by\\b|$)",
+            RegexOptions.IgnoreCase);
+        if (fromClause.Success && fromClause.Groups[1].Value.Contains(','))
+        {
+            error = "Comma-separated table sources are not allowed.";
+            return false;
+        }
+
+        if (string.Equals(role, "HR", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(sourceName, "vw_ChatbotTaskFull", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "HR access cannot query task-detail rows.";
+            return false;
         }
 
         return true;
