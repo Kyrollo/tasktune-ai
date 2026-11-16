@@ -355,6 +355,7 @@ export default function Reports() {
               <div>
                 <h3 className="text-lg font-semibold text-text-primary">Generate AI Report</h3>
                 <p className="text-xs text-text-muted">Select report type, dates, and department to generate a tailored AI report.</p>
+                <p className="text-xs text-text-muted mt-1" role="status">{agentOnline === null ? "Checking AI reporting service…" : agentOnline ? "AI reporting service is online" : "AI reporting service is unavailable"}</p>
               </div>
             </div>
 
