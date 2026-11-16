@@ -13,7 +13,7 @@ public partial class TaskTuneDbContext
         {
             entity.ToTable("UserPermissionOverrides");
             entity.HasKey(e => e.PermissionOverrideId);
-            entity.HasIndex(e => new { e.CompanyId, e.UserId, e.Resource, e.Action }, "UQ_UserPermissionOverrides")
+            entity.HasIndex(e => new { e.CompanyId, e.UserId, e.Resource, e.Action, e.ScopeResourceId }, "UQ_UserPermissionOverrides")
                 .IsUnique();
             entity.HasIndex(e => new { e.CompanyId, e.UserId, e.ExpiresAt }, "IX_UserPermissionOverrides_Active");
 
