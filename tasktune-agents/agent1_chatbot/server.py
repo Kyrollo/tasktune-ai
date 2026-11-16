@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import hmac
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 _agents_dir = Path(__file__).resolve().parent.parent
@@ -26,37 +27,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_AGENT_SERVICE_TOKEN = os.environ.get("AGENT_SERVICE_TOKEN", "")
+
+async def require_agent_service_token(x_agent_internal_token: str = Header(default="")):
+    if not _AGENT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Agent service authentication is not configured.")
+    if not hmac.compare_digest(x_agent_internal_token, _AGENT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized agent service caller.")
+
+
 app = FastAPI(
     title="TaskTune AI — Chatbot Agent",
     description="Role-aware enterprise chatbot.",
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.post("/api/chat", response_model=ChatbotResponse, tags=["Chatbot"])
+@app.post("/api/chat", response_model=ChatbotResponse, tags=["Chatbot"], dependencies=[Depends(require_agent_service_token)])
 async def chat(request: ChatbotRequest):
     try:
         result = run_chatbot(request)
         return ChatbotResponse(**result)
     except Exception as exc:
-        logger.exception("Chatbot request failed; providing executive fallback response")
-        return ChatbotResponse(
-            reply=(
-                "**Executive Operational Update:**\n\n"
-                "• **AI Microservices:** All 5 microservices (Chatbot, Task Guidance, Progress Tracking, AI Reports, Email Recommendations) are active.\n"
-                "• **Current Velocity:** Average velocity across enterprise projects is **92.4%** with 2 tasks completed and 5 in active progress.\n"
-                "• **Blockers & Risks:** Zero critical blockers. Payment gateway research (Stripe/PayPal) is on track for Q1 delivery."
-            ),
-            sql_query=""
-        )
+        logger.exception("Chatbot request failed; returning a service error")
+        raise HTTPException(status_code=503, detail="Chatbot analysis is temporarily unavailable.") from exc
 
 
 @app.get("/api/health", tags=["Health"])
