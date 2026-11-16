@@ -18,6 +18,7 @@ BEGIN
         [Action] NVARCHAR(50) NOT NULL,
         CanPerform BIT NOT NULL,
         [Scope] NVARCHAR(20) NOT NULL CONSTRAINT DF_UserPermissionOverrides_Scope DEFAULT N'self',
+        ScopeResourceId INT NULL,
         ExpiresAt DATETIME2(7) NULL,
         Reason NVARCHAR(500) NULL,
         GrantedBy INT NOT NULL,
@@ -25,10 +26,11 @@ BEGIN
         CONSTRAINT FK_UserPermissionOverrides_Companies FOREIGN KEY (CompanyId) REFERENCES dbo.Companies(CompanyId),
         CONSTRAINT FK_UserPermissionOverrides_Users FOREIGN KEY (UserId) REFERENCES dbo.Users(UserId),
         CONSTRAINT FK_UserPermissionOverrides_GrantedBy FOREIGN KEY (GrantedBy) REFERENCES dbo.Users(UserId),
+        CONSTRAINT FK_UserPermissionOverrides_ScopeResource FOREIGN KEY (ScopeResourceId) REFERENCES dbo.Users(UserId),
         CONSTRAINT CK_UserPermissionOverrides_Scope CHECK ([Scope] IN (N'self', N'team', N'department', N'company', N'selected'))
     );
     CREATE UNIQUE INDEX UQ_UserPermissionOverrides
-        ON dbo.UserPermissionOverrides(CompanyId, UserId, Resource, [Action]);
+        ON dbo.UserPermissionOverrides(CompanyId, UserId, Resource, [Action], ScopeResourceId);
     CREATE INDEX IX_UserPermissionOverrides_Active
         ON dbo.UserPermissionOverrides(CompanyId, UserId, ExpiresAt);
 END;
