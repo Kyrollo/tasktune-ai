@@ -332,6 +332,10 @@ public class ReportsController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
         try
         {
             var agentBaseUrl = string.IsNullOrWhiteSpace(agentConfig.BaseUrl)
