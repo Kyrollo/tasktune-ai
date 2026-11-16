@@ -35,6 +35,40 @@ public class OrgChartController : BaseApiController
             .Where(u => u.CompanyId == companyId.Value && u.IsActive)
             .ToListAsync();
 
+        // The org chart must follow the same employee visibility rules as individual profiles.
+        var visibleUsers = new List<User>();
+        foreach (var person in users)
+        {
+            if (await CanViewEmployeeAsync(_db, person.UserId))
+                visibleUsers.Add(person);
+        }
+        users = visibleUsers;
+
+        var visibleDepartmentIds = users
+            .Where(u => u.DepartmentId.HasValue)
+            .Select(u => u.DepartmentId!.Value)
+            .ToHashSet();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var activeReportingLines = await _db.EmployeeReportingLines.AsNoTracking()
+            .Where(x => x.CompanyId == companyId.Value &&
+                        x.IsPrimary &&
+                        x.RelationshipType == "line" &&
+                        x.EffectiveFrom <= today &&
+                        (!x.EffectiveTo.HasValue || x.EffectiveTo >= today))
+            .Select(x => new { x.EmployeeUserId, x.ManagerUserId })
+            .ToListAsync();
+
+        var visibleUserIds = users.Select(u => u.UserId).ToHashSet();
+        var managerIds = activeReportingLines
+            .Where(x => visibleUserIds.Contains(x.EmployeeUserId) && visibleUserIds.Contains(x.ManagerUserId))
+            .GroupBy(x => x.EmployeeUserId)
+            .ToDictionary(g => g.Key, g => g.First().ManagerUserId);
+
+        var managerNames = users.ToDictionary(
+            u => u.UserId,
+            u => u.FullName ?? (u.FirstName + " " + u.LastName));
+
         var roleNames = new Dictionary<byte, string>
         {
             { 0, "Employee" },
@@ -58,7 +92,7 @@ public class OrgChartController : BaseApiController
         } : (object?)null;
 
         var departmentRows = await _db.Departments
-            .Where(d => d.CompanyId == companyId.Value)
+            .Where(d => d.CompanyId == companyId.Value && visibleDepartmentIds.Contains(d.DepartmentId))
             .OrderBy(d => d.DepartmentName)
             .Select(d => new
             {
@@ -99,7 +133,9 @@ public class OrgChartController : BaseApiController
                     Position = u.Position != null ? u.Position.PositionTitle : null,
                     Role = u.Role,
                     RoleName = roleNames.GetValueOrDefault(u.Role, "Employee"),
-                    DepartmentName = d.DepartmentName
+                    DepartmentName = d.DepartmentName,
+                    ManagerUserId = managerIds.GetValueOrDefault(u.UserId),
+                    ManagerName = managerIds.TryGetValue(u.UserId, out var managerUserId) ? managerNames.GetValueOrDefault(managerUserId) : null
                 })
                 .ToList(),
             Positions = positions
@@ -119,7 +155,9 @@ public class OrgChartController : BaseApiController
                             u.Email,
                             Position = p.PositionTitle,
                             Role = u.Role,
-                            RoleName = roleNames.GetValueOrDefault(u.Role, "Employee")
+                            RoleName = roleNames.GetValueOrDefault(u.Role, "Employee"),
+                            ManagerUserId = managerIds.GetValueOrDefault(u.UserId),
+                            ManagerName = managerIds.TryGetValue(u.UserId, out var managerUserId) ? managerNames.GetValueOrDefault(managerUserId) : null
                         })
                         .ToList()
                 })
