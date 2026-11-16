@@ -235,7 +235,7 @@ public class TasksController : BaseApiController
             }
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return StatusCode(502, new { message = "Failed to reach AI guidance agent.", traceId = HttpContext.TraceIdentifier });
         }
@@ -427,7 +427,7 @@ public class TasksController : BaseApiController
             }
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return StatusCode(502, new { message = "Failed to reach AI progress agent.", traceId = HttpContext.TraceIdentifier });
         }
