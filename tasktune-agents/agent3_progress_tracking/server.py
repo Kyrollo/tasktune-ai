@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import hmac
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 _agents_dir = Path(__file__).resolve().parent.parent
@@ -26,39 +27,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_AGENT_SERVICE_TOKEN = os.environ.get("AGENT_SERVICE_TOKEN", "")
+
+async def require_agent_service_token(x_agent_internal_token: str = Header(default="")):
+    if not _AGENT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Agent service authentication is not configured.")
+    if not hmac.compare_digest(x_agent_internal_token, _AGENT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized agent service caller.")
+
+
 app = FastAPI(
     title="TaskTune AI — Progress Tracking Agent",
     description="Analyzes task progress data and returns predictive insights.",
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.post("/api/ai/progress-tracking", response_model=ProgressTrackingResponse, tags=["Progress Tracking"])
+@app.post("/api/ai/progress-tracking", response_model=ProgressTrackingResponse, tags=["Progress Tracking"], dependencies=[Depends(require_agent_service_token)])
 async def progress_tracking(request: ProgressTrackingRequest):
     try:
         result = run_progress_tracking(request.model_dump())
         return ProgressTrackingResponse(**result)
     except Exception as exc:
-        logger.exception("Progress tracking failed, providing fallback insights")
-        return ProgressTrackingResponse(
-            progress_summary="On track",
-            completion_prediction="2026-11-28",
-            blockers_analysis="Analysis of current sprint velocity indicates consistent progress. Core microservices and telemetry hooks are integrated with minimal friction.",
-            recommendations=[
-                "Continue test-driven development cadence across remaining subtasks",
-                "Schedule staging environment validation 48 hours prior to final release",
-                "Monitor third-party sandbox API quotas to prevent testing bottlenecks"
-            ],
-            risk_level="low"
-        )
+        logger.exception("Progress tracking failed")
+        raise HTTPException(status_code=503, detail="Progress analysis is temporarily unavailable.") from exc
 
 
 @app.get("/api/health")
