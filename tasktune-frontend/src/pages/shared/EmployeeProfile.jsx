@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AppLayout from '../../layouts/AppLayout';
-import { Badge, Card, ProgressBar } from '../../components/ui';
+import { Badge, Card, ProgressBar, Modal, Button } from '../../components/ui';
 import { evaluationService } from '../../services/evaluationService';
 import { projectService } from '../../services/projectService';
 import { taskService } from '../../services/taskService';
 import { userService } from '../../services/userService';
-import { ArrowLeft, Award, Building2, Calendar, Mail } from 'lucide-react';
+import { reportingLineService } from '../../services/reportingLineService';
+import { useAuth } from '../../contexts/AuthContext';
+import { ArrowLeft, Award, Building2, Calendar, Mail, Network, UserRoundPlus, X } from 'lucide-react';
 
 const ROLE_MAP = {
   0: 'Employee',
@@ -32,22 +34,31 @@ function formatDate(value) {
 export default function EmployeeProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const canManageReporting = ['HR', 'Manager', 'CEO', 'Admin'].includes(currentUser?.role);
   const [user, setUser] = useState(null);
   const [evaluations, setEvaluations] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [managerOptions, setManagerOptions] = useState([]);
+  const [showReportingModal, setShowReportingModal] = useState(false);
+  const [selectedManagerId, setSelectedManagerId] = useState('');
+  const [reportingEffectiveFrom, setReportingEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [reportingSaving, setReportingSaving] = useState(false);
+  const [reportingError, setReportingError] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
 
       try {
-        const [userRes, evalsRes, tasksRes, projectsRes] = await Promise.all([
+        const [userRes, evalsRes, tasksRes, projectsRes, directoryRes] = await Promise.all([
           userService.getUser(id),
           evaluationService.getUserEvaluations(id),
           taskService.getTasks(1, 200),
           projectService.getProjects(1, 100),
+          canManageReporting ? userService.getUsers(1, 100) : Promise.resolve({ data: { items: [] } }),
         ]);
 
         const userData = userRes.data || {};
@@ -59,7 +70,16 @@ export default function EmployeeProfile() {
           position: userData.position || 'N/A',
           role: ROLE_MAP[userData.role] || userData.role || 'Employee',
           status: userData.status || (userData.isActive ? 'Active' : 'Inactive'),
+          manager: userData.manager || null,
+          directReports: userData.directReports || [],
         });
+
+        const directoryItems = Array.isArray(directoryRes.data) ? directoryRes.data : directoryRes.data?.items || [];
+        setManagerOptions(directoryItems.filter((person) => Number(person.userId ?? person.id) !== Number(id)).map((person) => ({
+          id: person.userId ?? person.id,
+          name: person.fullName || [person.firstName, person.lastName].filter(Boolean).join(' '),
+          position: person.positionTitle || person.position?.positionTitle || '',
+        })));
 
         const evaluationItems = Array.isArray(evalsRes.data) ? evalsRes.data : evalsRes.data?.items || [];
         setEvaluations(evaluationItems.map(item => ({
@@ -97,7 +117,42 @@ export default function EmployeeProfile() {
     };
 
     fetchData();
-  }, [id]);
+  }, [id, canManageReporting]);
+
+
+  const handleAssignManager = async () => {
+    if (!selectedManagerId) {
+      setReportingError('Choose a manager first.');
+      return;
+    }
+    setReportingSaving(true);
+    setReportingError('');
+    try {
+      const existingLine = user?.manager?.reportingLineId;
+      if (existingLine) {
+        const start = new Date(`${reportingEffectiveFrom}T00:00:00`);
+        start.setDate(start.getDate() - 1);
+        const closeDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+        await reportingLineService.close(existingLine, closeDate);
+      }
+      await reportingLineService.create({
+        employeeUserId: Number(id),
+        managerUserId: Number(selectedManagerId),
+        relationshipType: 'line',
+        isPrimary: true,
+        effectiveFrom: reportingEffectiveFrom,
+        effectiveTo: null,
+      });
+      const { data } = await userService.getUser(id);
+      setUser((previous) => ({ ...previous, manager: data.manager || null }));
+      setShowReportingModal(false);
+      setSelectedManagerId('');
+    } catch (err) {
+      setReportingError(err.response?.data?.message || 'Unable to assign the reporting manager. Check for an existing or circular relationship.');
+    } finally {
+      setReportingSaving(false);
+    }
+  };
 
   const userTasks = useMemo(
     () => tasks.filter(task => String(task.assignedTo) === String(id)),
@@ -166,8 +221,24 @@ export default function EmployeeProfile() {
               </div>
               <div className="flex items-center gap-3">
                 <Calendar size={14} className="text-text-muted" />
-                <span className="text-sm text-text-secondary">Profile active in current company</span>
+                <span className="text-sm text-text-secondary">Joined {formatDate(user.createdAt)}</span>
               </div>
+              <div className="flex items-start gap-3">
+                <Network size={14} className="text-text-muted mt-1" />
+                <div className="text-sm text-text-secondary">
+                  <span className="text-text-muted">Reports to: </span>
+                  {user.manager ? (
+                    <button onClick={() => navigate(`/profile/${user.manager.userId}`)} className="text-orange hover:underline">
+                      {user.manager.fullName}
+                    </button>
+                  ) : 'No primary manager assigned'}
+                </div>
+              </div>
+              {canManageReporting && (
+                <Button variant="secondary" className="w-full mt-2" onClick={() => { setReportingError(''); setShowReportingModal(true); }}>
+                  <span className="inline-flex items-center gap-2"><UserRoundPlus size={15} /> {user.manager ? 'Change manager' : 'Assign manager'}</span>
+                </Button>
+              )}
             </div>
           </Card>
 
@@ -264,8 +335,55 @@ export default function EmployeeProfile() {
               </div>
             )}
           </Card>
+
+          {user.directReports?.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Direct Reports</h3>
+                <Badge>{user.directReports.length}</Badge>
+              </div>
+              <div className="space-y-2">
+                {user.directReports.map((person) => (
+                  <button key={person.userId} onClick={() => navigate(`/profile/${person.userId}`)}
+                    className="w-full flex items-center justify-between gap-3 p-3 bg-bg rounded-lg border border-border/50 hover:border-orange/30 text-left">
+                    <span>
+                      <span className="block text-sm text-text-primary font-medium">{person.fullName}</span>
+                      <span className="block text-xs text-text-muted">{person.position || 'Position not assigned'} · {person.department || 'Unassigned'}</span>
+                    </span>
+                    <span className="text-xs text-orange">View profile</span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
+
+      <Modal isOpen={showReportingModal} onClose={() => setShowReportingModal(false)} title="Assign primary manager">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            This creates an effective-dated line-management relationship. It is separate from the employee's role title and department.
+          </p>
+          {reportingError && <div role="alert" className="p-3 bg-danger/10 border border-danger/20 rounded-lg text-sm text-danger">{reportingError}</div>}
+          <div>
+            <label className="block text-sm text-text-secondary mb-1.5">Manager</label>
+            <select value={selectedManagerId} onChange={(e) => setSelectedManagerId(e.target.value)}
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm">
+              <option value="">Select manager…</option>
+              {managerOptions.map((person) => <option key={person.id} value={person.id}>{person.name}{person.position ? ` — ${person.position}` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1.5">Effective from</label>
+            <input type="date" value={reportingEffectiveFrom} onChange={(e) => setReportingEffectiveFrom(e.target.value)}
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowReportingModal(false)} disabled={reportingSaving}>Cancel</Button>
+            <Button onClick={handleAssignManager} disabled={reportingSaving}>{reportingSaving ? 'Saving…' : 'Save manager'}</Button>
+          </div>
+        </div>
+      </Modal>
     </AppLayout>
   );
 }
