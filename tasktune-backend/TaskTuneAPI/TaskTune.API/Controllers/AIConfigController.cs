@@ -26,8 +26,19 @@ public class AIConfigController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
-        var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
-        return Ok(AIConfigurationStore.ToClientResponse(config));
+        try
+        {
+            var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+            return Ok(AIConfigurationStore.ToClientResponse(config));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 
     [HttpPut("config")]
