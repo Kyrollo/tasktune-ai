@@ -101,6 +101,7 @@ public class UsersController : BaseApiController
                   person.IsActive
             select new
             {
+                ReportingLineId = line.ReportingLineId,
                 UserId = person.UserId,
                 FullName = person.FullName ?? (person.FirstName + " " + person.LastName),
                 person.Email,
