@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import hmac
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,15 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_AGENT_SERVICE_TOKEN = os.environ.get("AGENT_SERVICE_TOKEN", "")
+
+async def require_agent_service_token(x_agent_internal_token: str = Header(default="")):
+    if not _AGENT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Agent service authentication is not configured.")
+    if not hmac.compare_digest(x_agent_internal_token, _AGENT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized agent service caller.")
+
 
 
 class GuidanceRequest(BaseModel):
@@ -56,55 +66,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.post("/api/guidance", response_model=GuidanceResponse, summary="Generate task guidance")
+@app.post("/api/guidance", response_model=GuidanceResponse, summary="Generate task guidance", dependencies=[Depends(require_agent_service_token)])
 async def generate_guidance(request: GuidanceRequest):
     try:
         result = run_task_guidance(request.model_dump())
         return GuidanceResponse(**result)
     except Exception as exc:
-        logger.exception("Task guidance generation failed, providing executive fallback guidance")
-        task_name = request.task_name or "Task Guidance"
-        return GuidanceResponse(
-            guidance_text=(
-                f"Strategic AI Guidance for {task_name}:\n\n"
-                "1. Architectural Review: Evaluate API specifications, webhook reliability, and SDK compatibility.\n"
-                "2. Security & Compliance: Ensure PCI-DSS compliance, tokenization standards, and end-to-end encryption.\n"
-                "3. Implementation Strategy: Establish sandbox test harnesses, retry backoff algorithms, and mock responses.\n"
-                "4. Deliverables: Finalize comparison matrix and technical recommendation for executive review."
-            ),
-            suggested_subtasks=[
-                f"Benchmark API endpoints, rate limits, and latency profiles for {task_name}",
-                "Analyze transaction fee structures, currency conversions, and refund workflows",
-                "Draft idempotent webhook event listeners and failure recovery specs",
-                "Synthesize architectural findings into final executive decision document"
-            ],
-            task_breakdown=[
-                {"task": "Technical Architecture", "subtasks": ["SDK Evaluation", "Webhook Reliability", "Tokenization Security"], "priority": "high"},
-                {"task": "Risk & Compliance", "subtasks": ["PCI-DSS v4.0 Audit", "Data Sovereignty Check", "SLA Verification"], "priority": "medium"},
-                {"task": "Executive Synthesis", "subtasks": ["Cost-Benefit Analysis", "Implementation Roadmap"], "priority": "high"}
-            ],
-            estimated_time="3-4 business days",
-            resources=["Developer Documentation", "Security Whitepaper", "Architecture RFC Wiki"],
-            risk_factors=[
-                "Third-party API rate limiting and response latency spikes",
-                "Complex webhook delivery ordering under high concurrent load",
-                "Variable interchange pricing structures across regional currencies"
-            ],
-            success_criteria={
-                "deliverables": ["Interactive Comparison Matrix", "Sandbox Prototype with Idempotent Handler"],
-                "quality_indicators": ["Sub-200ms API response latency", "100% test coverage for error states"],
-                "completion_checklist": ["Security team sign-off", "Lead architect review", "CFO approval"]
-            }
-        )
+        logger.exception("Task guidance generation failed")
+        raise HTTPException(status_code=503, detail="Task guidance is temporarily unavailable.") from exc
 
 
 @app.get("/api/health")
