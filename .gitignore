@@ -45,3 +45,7 @@ branch_log.txt
 .env
 .env.*
 !.env.example
+
+# Private employee and task attachments
+**/App_Data/private-uploads/
+**/App_Data/
