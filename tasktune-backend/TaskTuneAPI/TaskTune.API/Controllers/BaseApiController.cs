@@ -42,6 +42,88 @@ public abstract class BaseApiController : ControllerBase
     }
 
 
+
+    protected async Task<bool> CanViewTaskAsync(TaskTuneDbContext db, int taskId)
+    {
+        var userId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        var role = GetCurrentRole();
+        if (userId == null || companyId == null || string.IsNullOrWhiteSpace(role)) return false;
+
+        var task = await db.Tasks.AsNoTracking()
+            .Where(t => t.TaskId == taskId && t.Project.CompanyId == companyId.Value)
+            .Select(t => new
+            {
+                t.AssignedTo,
+                t.CreatedBy,
+                AssignedDepartmentId = t.AssignedToNavigation != null ? t.AssignedToNavigation.DepartmentId : null
+            })
+            .FirstOrDefaultAsync();
+        if (task == null) return false;
+
+        if (role.Equals("Employee", StringComparison.OrdinalIgnoreCase))
+            return task.AssignedTo == userId.Value || task.CreatedBy == userId.Value;
+
+        if (role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase))
+        {
+            var currentDepartmentId = await db.Users.AsNoTracking()
+                .Where(u => u.UserId == userId.Value && u.CompanyId == companyId.Value)
+                .Select(u => u.DepartmentId)
+                .FirstOrDefaultAsync();
+
+            return task.CreatedBy == userId.Value ||
+                   task.AssignedTo == userId.Value ||
+                   (currentDepartmentId.HasValue && task.AssignedDepartmentId == currentDepartmentId) ||
+                   await IsInReportingChainAsync(db, companyId.Value, userId.Value, task.AssignedTo);
+        }
+
+        return role.Equals("Manager", StringComparison.OrdinalIgnoreCase) ||
+               role.Equals("HR", StringComparison.OrdinalIgnoreCase) ||
+               role.Equals("CEO", StringComparison.OrdinalIgnoreCase) ||
+               role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected async Task<bool> CanViewProjectAsync(TaskTuneDbContext db, int projectId)
+    {
+        var userId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        var role = GetCurrentRole();
+        if (userId == null || companyId == null || string.IsNullOrWhiteSpace(role)) return false;
+
+        var project = await db.Projects.AsNoTracking()
+            .Where(p => p.ProjectId == projectId && p.CompanyId == companyId.Value)
+            .Select(p => new { p.ManagerId })
+            .FirstOrDefaultAsync();
+        if (project == null) return false;
+
+        if (role.Equals("Manager", StringComparison.OrdinalIgnoreCase) ||
+            role.Equals("HR", StringComparison.OrdinalIgnoreCase) ||
+            role.Equals("CEO", StringComparison.OrdinalIgnoreCase) ||
+            role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var taskIds = db.Tasks.AsNoTracking()
+            .Where(t => t.ProjectId == projectId && t.Project.CompanyId == companyId.Value);
+
+        if (role.Equals("Employee", StringComparison.OrdinalIgnoreCase))
+            return project.ManagerId == userId.Value ||
+                   await taskIds.AnyAsync(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value);
+
+        if (role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase))
+        {
+            var departmentId = await db.Users.AsNoTracking()
+                .Where(u => u.UserId == userId.Value && u.CompanyId == companyId.Value)
+                .Select(u => u.DepartmentId)
+                .FirstOrDefaultAsync();
+            return project.ManagerId == userId.Value ||
+                   await taskIds.AnyAsync(t => t.AssignedTo == userId.Value ||
+                                               t.CreatedBy == userId.Value ||
+                                               (departmentId.HasValue && t.AssignedToNavigation.DepartmentId == departmentId.Value));
+        }
+
+        return false;
+    }
+
     protected async Task<bool> HasEffectivePermissionAsync(
         TaskTuneDbContext db, string resource, string action, int? scopeResourceId = null)
     {
