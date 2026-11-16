@@ -138,10 +138,13 @@ public class ChatbotController : BaseApiController
         var thread = await _db.ChatThreads.FirstOrDefaultAsync(t => t.ThreadId == threadId && t.UserId == userId.Value);
         if (thread == null) return NotFound();
 
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+
         var user = await _db.Users
             .Include(u => u.Department)
             .Include(u => u.Position)
-            .FirstOrDefaultAsync(u => u.UserId == userId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == userId.Value && u.CompanyId == companyId.Value && u.IsActive);
         if (user == null) return Unauthorized();
 
         var userMessage = new ChatMessage
@@ -159,7 +162,19 @@ public class ChatbotController : BaseApiController
             thread.Title = BuildThreadTitle(request.Content);
         }
 
-        var execution = await BuildAssistantReplyAsync(user, thread, request.Content.Trim());
+        ChatExecutionResult execution;
+        try
+        {
+            execution = await BuildAssistantReplyAsync(user, thread, request.Content.Trim());
+        }
+        catch (AIServiceUnavailableException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "The AI assistant is unavailable or not configured. Your message was not processed.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
         var assistantMessage = new ChatMessage
         {
             ThreadId = threadId,
@@ -206,30 +221,25 @@ public class ChatbotController : BaseApiController
         var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId);
         var agentConfig = config.GetAgent("chat_assistant");
 
-        if (config.Enabled && config.Features.ChatAssistant && agentConfig.Enabled)
-        {
-            var sqlReply = await TryGetSqlBackedReplyAsync(user, thread, message, scope, agentConfig);
-            if (sqlReply != null)
-            {
-                return sqlReply;
-            }
+        if (!config.Enabled || !config.Features.ChatAssistant || !agentConfig.Enabled)
+            throw new AIServiceUnavailableException("The company has disabled the chatbot agent.");
 
-            var directReply = await TryGetAgentResponseAsync(BuildAgentPayload(user, thread, message, scope, null, agentConfig), agentConfig);
-            if (!string.IsNullOrWhiteSpace(directReply?.Reply))
+        var sqlReply = await TryGetSqlBackedReplyAsync(user, thread, message, scope, agentConfig);
+        if (sqlReply != null)
+            return sqlReply;
+
+        var directReply = await TryGetAgentResponseAsync(
+            BuildAgentPayload(user, thread, message, scope, null, agentConfig), agentConfig);
+        if (!string.IsNullOrWhiteSpace(directReply?.Reply))
+        {
+            return new ChatExecutionResult
             {
-                return new ChatExecutionResult
-                {
-                    Reply = directReply.Reply!,
-                    ModelVersion = agentConfig.Model
-                };
-            }
+                Reply = directReply.Reply!,
+                ModelVersion = agentConfig.Model
+            };
         }
 
-        return new ChatExecutionResult
-        {
-            Reply = BuildFallbackReply(user, thread, message, scope),
-            ModelVersion = "tasktune_ai_assistant_fallback"
-        };
+        throw new AIServiceUnavailableException("The chatbot agent did not return a valid response.");
     }
 
     private async Task<ChatExecutionResult?> TryGetSqlBackedReplyAsync(
@@ -327,7 +337,7 @@ public class ChatbotController : BaseApiController
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
             var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
             if (string.IsNullOrWhiteSpace(agentServiceToken))
-                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+                return null;
             http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
             var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
             var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
@@ -465,6 +475,7 @@ public class ChatbotController : BaseApiController
         var taskQuery = _db.Tasks
             .Include(t => t.Project)
             .Include(t => t.AssignedToNavigation)
+            .Where(t => t.Project.CompanyId == companyId)
             .AsQueryable();
 
         var projectQuery = _db.Projects
@@ -697,3 +708,9 @@ public record ChatScope(
     List<EvaluationScopeItem> Evaluations,
     List<ChatReportItem> Reports,
     List<NotificationScopeItem> Notifications);
+
+
+public sealed class AIServiceUnavailableException : Exception
+{
+    public AIServiceUnavailableException(string message) : base(message) { }
+}
