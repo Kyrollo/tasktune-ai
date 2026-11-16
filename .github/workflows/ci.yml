@@ -30,6 +30,15 @@ jobs:
           dotnet-version: 8.0.x
       - name: Restore and build API
         run: dotnet build tasktune-backend/TaskTuneAPI/TaskTune.API/TaskTune.API.csproj --configuration Release
+      - name: Run API security regression tests
+        run: dotnet test tasktune-backend/TaskTuneAPI/TaskTune.Tests/TaskTune.Tests.csproj --configuration Release --logger "trx;LogFileName=tasktune-tests.trx"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tasktune-dotnet-test-results
+          path: tasktune-backend/TaskTuneAPI/TaskTune.Tests/TestResults/*.trx
+          if-no-files-found: ignore
 
   frontend:
     name: Frontend lint and production build
