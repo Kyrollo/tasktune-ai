@@ -150,6 +150,19 @@ public class UsersController : BaseApiController
         user.RefreshToken = null;
         user.RefreshTokenExpiry = null;
         user.UpdatedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        var activeSessions = await _db.UserSessions
+            .Where(s => s.UserId == user.UserId && s.RevokedAt == null)
+            .ToListAsync();
+        foreach (var session in activeSessions)
+            session.RevokedAt = now;
+
+        var outstandingTokens = await _db.AccountSecurityTokens
+            .Where(t => t.UserId == user.UserId && t.ConsumedAt == null)
+            .ToListAsync();
+        foreach (var token in outstandingTokens)
+            token.ConsumedAt = now;
+
         await _db.SaveChangesAsync();
         await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, action: "DEACTIVATE",
             resourceType: "User", resourceId: user.UserId, before: before, after: new { user.IsActive });

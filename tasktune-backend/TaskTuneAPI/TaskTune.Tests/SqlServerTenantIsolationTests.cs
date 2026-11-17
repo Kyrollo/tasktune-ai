@@ -94,6 +94,8 @@ public sealed class SqlServerTenantIsolationTests
             await tenantOne.ChatThreads.CountAsync();
             await tenantOne.ChatMessages.CountAsync();
             await tenantOne.UserSettings.CountAsync();
+            await tenantOne.UserSessions.CountAsync();
+            await tenantOne.AccountSecurityTokens.CountAsync();
             }
 
             await using (var tenantTwo = new TaskTuneDbContext(options, new FixedTenantContext(companyTwoId)))

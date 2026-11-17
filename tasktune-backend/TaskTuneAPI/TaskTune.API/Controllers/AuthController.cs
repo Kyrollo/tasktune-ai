@@ -39,7 +39,11 @@ public class AuthController : ControllerBase
         if (!int.TryParse(claim, out int userId))
             return Unauthorized();
 
-        await _authService.LogoutAsync(userId);
+        var sessionClaim = User.FindFirst("sid")?.Value;
+        if (!Guid.TryParse(sessionClaim, out var sessionId))
+            return Unauthorized();
+
+        await _authService.LogoutAsync(userId, sessionId);
         return Ok(new { message = "Logged out successfully." });
     }
 
