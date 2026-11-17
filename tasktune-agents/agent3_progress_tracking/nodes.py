@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any
 
-from langchain_groq import ChatGroq
+from tasktune_llm import build_chat_model
 
 from .prompts import (
     ANALYZE_PROGRESS_PROMPT,
@@ -34,20 +34,13 @@ def _get_agent_config(state: ProgressTrackingState) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
-def _get_llm(state: ProgressTrackingState, temperature: float = 0.2) -> ChatGroq:
-    config = _get_agent_config(state)
-    kwargs: dict[str, Any] = {
-        "model": config.get("model") or MODEL_NAME,
-        "temperature": config.get("temperature", temperature),
-    }
-
-    if config.get("api_key"):
-        kwargs["api_key"] = config["api_key"]
-
-    if config.get("max_tokens"):
-        kwargs["max_tokens"] = config["max_tokens"]
-
-    return ChatGroq(**kwargs)
+def _get_llm(state: ProgressTrackingState, temperature: float = 0.2):
+    return build_chat_model(
+        _get_agent_config(state),
+        fallback_model=MODEL_NAME,
+        temperature=temperature,
+        max_tokens=2048,
+    )
 
 
 def _clean_json_text(text: str) -> str:

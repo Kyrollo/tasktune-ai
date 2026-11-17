@@ -1,6 +1,6 @@
 # HR, SaaS and AI usage deployment notes
 
-This branch adds leave management, tenant subscription entitlements, usage metering, private attachment storage, and individual employee permission/reporting records. The changes are additive; they do not replace the existing database or collect payments.
+This branch adds employee permission/reporting controls, leave and attendance, tenant subscriptions/usage metering, HR workforce lifecycle workflows, country-neutral payroll records, and per-agent AI provider routing. The changes are additive; they do not replace the existing database or collect payments.
 
 ## 1. Before deployment
 
@@ -36,6 +36,10 @@ Run these scripts in order, once per database. They are intended to be additive 
    - Work shifts, effective-dated employee shift assignments and UTC attendance punches.
 7. `20261117_AllowSystemAttendanceCaptureSource.sql`
    - Allows server-generated schedule rows to be marked with capture source `system`.
+8. `20261117_AddHRWorkforceLifecycle.sql`
+   - Recruitment applicant pipeline, onboarding checklist, performance goals, expense claims, company assets, and benefit plans/enrollments.
+9. `20261117_AddPayrollFoundation.sql`
+   - Payroll periods and payslips with explicit pay components, approval and paid states. No country-specific statutory rates are seeded.
 
 Do not run the old destructive database setup script against a production database.
 
@@ -44,24 +48,31 @@ Do not run the old destructive database setup script against a production databa
 1. Log in as a company Admin or CEO and open **Leave Management**.
 2. Configure the company's weekend days, company time zone (for example `Africa/Cairo`), add company holidays, create leave types and allocate annual balances to employees.
 3. In **Attendance & Shifts**, create work shifts and assign them to employees with the correct weekdays and effective dates. HR can generate scheduled records for selected periods and reconcile missed shifts after the shift end plus grace period.
-4. Open **Subscription & Usage** as a company Admin/CEO to view the assigned plan and current measured usage.
-5. The platform operator assigns or changes a tenant plan through the secret-protected API:
+4. Open **HR Workforce** to manage recruitment applicants, onboarding tasks, performance goals, expense claims, assets, and benefit enrollments according to the employee/manager/HR access scope.
+5. Open **Payroll** to create a pay period, enter employee pay components and deductions, approve the period, and mark approved payslips as paid. Tax and social-insurance amounts must be calculated from the applicable local rules outside TaskTune and entered by authorised payroll staff.
+6. Open **Subscription & Usage** as a company Admin/CEO to view the assigned plan and current measured usage.
+7. The platform operator assigns or changes a tenant plan through the secret-protected API:
    - `GET /api/platform/plans`
    - `PUT /api/platform/tenants/{companyId}/subscription`
    - Send the `X-Platform-Admin-Key` header using the `PLATFORM_ADMIN_API_KEY` secret.
-6. Keep each AI provider encryption key stable. Changing `AI_PROVIDER_ENCRYPTION_KEY` makes existing encrypted provider keys unreadable unless the original key is restored or a controlled key-rotation migration is performed.
+8. Keep each AI provider encryption key stable. Changing `AI_PROVIDER_ENCRYPTION_KEY` makes existing encrypted provider keys unreadable unless the original key is restored or a controlled key-rotation migration is performed.
 
 ## 4. Current enforcement and metering behavior
 
 - Server-side module entitlements are enforced for Core HR, Leave, Tasks, Projects, Reports and AI endpoints; frontend navigation is not the security boundary.
+- HR workforce and payroll endpoints resolve active employee records within the signed-in company and, for employee/manager features, constrain records to self and the effective reporting tree.
+- AI configuration supports per-agent provider/model/agent URL/endpoint/limits and encrypted provider keys. Supported adapters are Groq, OpenAI, Anthropic, and OpenAI-compatible APIs. Provider-specific calls remain dependent on valid provider credentials, account limits and network access.
 - New employee creation checks the company's Core HR entitlement and active-seat limit.
 - Chatbot, task guidance/recommendation, progress-analysis and AI report-generation requests reserve one monthly AI request against the tenant before the agent is called. A request attempt can count even when the downstream provider/agent later fails; this avoids quota bypass through concurrent retries.
 - Task attachments are stored outside the public web root. Uploads check the storage limit and record a positive usage event; deletion records the matching negative storage event after metadata deletion.
 - Usage event idempotency keys prevent a retry with the same key from being counted twice. Clients should send a unique `Idempotency-Key` header when retrying an AI request.
+- CI now starts a disposable SQL Server instance for the workforce migration integration test and runs unit tests for payroll math and recruitment/workflow policies. AI adapter tests use mocked SDK clients and do not prove live provider availability.
 - The monthly AI meter uses the UTC calendar month. Storage is accumulated as signed events. Active employee count is read from current active users.
 
-## 5. Not yet connected
+## 5. Remaining commercial/production integrations
 
 The subscription foundation does not yet initiate or receive real payments. Payment-provider checkout, verified webhook processing, invoice/receipt generation, plan self-service upgrades and dunning are still separate work. The platform operator endpoint is an internal control, not a payment gateway.
 
-Country-specific payroll calculations, attendance hardware integrations, biometric capture, absence/no-show generation and biometric imports, recruitment lifecycle, benefits and asset/expense management are not included in this release slice.
+The HR workforce and payroll additions are foundational workflows, not a complete jurisdiction-certified HRIS/payroll product. Remaining work includes full ATS features (job requisitions, interview scheduling/feedback, offer documents and candidate communications), onboarding templates/document signing, performance review cycles and approval forms, benefit carrier integrations, receipt file upload/storage and accounting exports, payroll bank files and country-specific tax/social-insurance calculations, payroll reconciliation, attendance hardware/biometric connectors, and local statutory validation. Do not use the arithmetic-only payroll module as a statutory calculation engine.
+
+Before selling to customers, run every migration against a restored production-like database, perform end-to-end tests against SQL Server, exercise tenant/role boundary cases, validate each configured AI provider with real credentials, configure HTTPS/private agent networking and persistent storage, complete a security review, and deploy through a monitored production environment. The CI build/test suite is not a production-readiness certification.

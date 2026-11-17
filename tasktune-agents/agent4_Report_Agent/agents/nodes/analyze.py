@@ -1,4 +1,4 @@
-from langchain_groq import ChatGroq
+from tasktune_llm import build_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from agent4_Report_Agent.models.state import ProgressReportState
 from agent4_Report_Agent.models.schemas import AIAnalysis, EmployeeSummary
@@ -8,13 +8,13 @@ import json
 settings = get_settings()
 
 
-def _get_llm(state: ProgressReportState) -> ChatGroq:
-    config = state.get("agent_config", {}) or {}
-    return ChatGroq(
-        model=config.get("model") or settings.ai_model,
-        api_key=config.get("api_key") or settings.groq_api_key,
-        max_tokens=config.get("max_tokens") or settings.max_tokens,
-        temperature=config.get("temperature", 0.2),
+def _get_llm(state: ProgressReportState):
+    return build_chat_model(
+        state.get("agent_config", {}) or {},
+        fallback_model=settings.ai_model,
+        fallback_api_key=settings.groq_api_key or None,
+        max_tokens=settings.max_tokens,
+        temperature=0.2,
     )
 
 

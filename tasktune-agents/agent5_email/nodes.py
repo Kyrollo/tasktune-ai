@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from langchain_groq import ChatGroq
+from tasktune_llm import build_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -22,20 +22,14 @@ class EmailRecommendationResult(BaseModel):
     rationale: str = ""
 
 
-def _get_llm(request) -> ChatGroq:
+def _get_llm(request):
     config = request.agent_config if isinstance(request.agent_config, dict) else {}
-    kwargs = {
-        "model": config.get("model") or MODEL_NAME,
-        "temperature": config.get("temperature", 0.3),
-    }
-
-    if config.get("api_key"):
-        kwargs["api_key"] = config["api_key"]
-
-    if config.get("max_tokens"):
-        kwargs["max_tokens"] = config["max_tokens"]
-
-    return ChatGroq(**kwargs)
+    return build_chat_model(
+        config,
+        fallback_model=MODEL_NAME,
+        temperature=0.3,
+        max_tokens=1200,
+    )
 
 
 def generate_recommendation(state: EmailRecommendationState) -> dict:

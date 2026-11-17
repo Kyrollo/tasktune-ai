@@ -29,6 +29,8 @@ import Settings from './pages/shared/Settings';
 import SubscriptionOverview from './pages/admin/SubscriptionOverview';
 import AttendanceCenter from './pages/shared/AttendanceCenter';
 import LeaveCenter from './pages/shared/LeaveCenter';
+import PayrollCenter from './pages/shared/PayrollCenter';
+import HRWorkforceCenter from './pages/shared/HRWorkforceCenter';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, getDefaultRoute, canAccessRoute, permissions, permissionsLoaded } = useAuth();
@@ -92,6 +94,8 @@ export default function App() {
       <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
       <Route path="/leave" element={<ProtectedRoute><LeaveCenter /></ProtectedRoute>} />
       <Route path="/attendance" element={<ProtectedRoute><AttendanceCenter /></ProtectedRoute>} />
+      <Route path="/workforce" element={<ProtectedRoute><HRWorkforceCenter /></ProtectedRoute>} />
+      <Route path="/payroll" element={<ProtectedRoute><PayrollCenter /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
       {/* Fallback */}

@@ -132,6 +132,7 @@ public class AIAgentConfig
     public string Provider { get; set; } = "groq";
     public string Model { get; set; } = "llama-3.3-70b-versatile";
     public string? ApiKey { get; set; }
+    public string ProviderBaseUrl { get; set; } = "";
     public string BaseUrl { get; set; } = "";
     public string Endpoint { get; set; } = "";
     public double Temperature { get; set; } = 0.2;
@@ -223,6 +224,7 @@ public static class AIConfigurationStore
                     kvp.Value.Name,
                     kvp.Value.Provider,
                     kvp.Value.Model,
+                    kvp.Value.ProviderBaseUrl,
                     HasApiKey = !string.IsNullOrWhiteSpace(kvp.Value.ApiKey),
                     kvp.Value.BaseUrl,
                     kvp.Value.Endpoint,
@@ -339,6 +341,7 @@ public static class AIConfigurationStore
             existing.Name = string.IsNullOrWhiteSpace(existing.Name) ? agent.Name : existing.Name;
             existing.Provider = string.IsNullOrWhiteSpace(existing.Provider) ? agent.Provider : existing.Provider;
             existing.Model = string.IsNullOrWhiteSpace(existing.Model) ? agent.Model : existing.Model;
+            existing.ProviderBaseUrl ??= "";
             existing.BaseUrl = string.IsNullOrWhiteSpace(existing.BaseUrl) ? agent.BaseUrl : existing.BaseUrl;
             existing.Endpoint = string.IsNullOrWhiteSpace(existing.Endpoint) ? agent.Endpoint : existing.Endpoint;
             existing.Temperature = existing.Temperature == 0 ? agent.Temperature : existing.Temperature;

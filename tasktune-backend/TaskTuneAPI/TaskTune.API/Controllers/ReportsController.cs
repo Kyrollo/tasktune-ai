@@ -354,6 +354,7 @@ public class ReportsController : BaseApiController
                 provider = agentConfig.Provider,
                 model = agentConfig.Model,
                 api_key = agentConfig.ApiKey,
+                provider_base_url = agentConfig.ProviderBaseUrl,
                 temperature = agentConfig.Temperature,
                 max_tokens = agentConfig.MaxTokens
             }

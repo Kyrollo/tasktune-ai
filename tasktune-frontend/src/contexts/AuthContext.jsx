@@ -59,7 +59,7 @@ const PAGE_ROUTES = {
   Attendance:         { _default: ['/attendance'] },
 };
 
-const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave', '/attendance'];
+const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave', '/attendance', '/workforce', '/payroll'];
 
 const DEFAULT_ROUTE = {
   Employee: '/dashboard', Supervisor: '/supervisor', Manager: '/executive',
@@ -86,7 +86,8 @@ const DB_RESOURCE_MAP = {
     'roles': 'Role Matrix',
     'audit': 'Audit Logs',
     'ai': 'AI Control',
-    'leave': 'Leave'
+    'leave': 'Leave',
+    'payroll': 'Payroll'
   };
 
   function buildNavFromPermissions(role, permissions) {
@@ -228,9 +229,13 @@ export function AuthProvider({ children }) {
         nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
       if (!nav.some((item) => item.path === '/attendance'))
         nav.push({ label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' });
+      if (!nav.some((item) => item.path === '/workforce'))
+        nav.push({ label: 'People & Benefits', path: '/workforce', icon: 'BriefcaseBusiness' });
+      if (!nav.some((item) => item.path === '/payroll'))
+        nav.push({ label: 'Payroll', path: '/payroll', icon: 'CreditCard' });
       return nav;
     }
-    return [...(FALLBACK_NAV[user.role] || []), { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }, { label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' }];
+    return [...(FALLBACK_NAV[user.role] || []), { label: 'People & Benefits', path: '/workforce', icon: 'BriefcaseBusiness' }, { label: 'Payroll', path: '/payroll', icon: 'CreditCard' }, { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }, { label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' }];
   }, [user, permissions]);
 
   const getDefaultRoute = useCallback(() =>
