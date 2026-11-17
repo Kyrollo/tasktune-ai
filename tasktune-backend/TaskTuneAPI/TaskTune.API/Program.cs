@@ -80,6 +80,8 @@ builder.Services.AddDbContext<TaskTuneDbContext>(options =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITransactionalEmailSender, SmtpTransactionalEmailSender>();
 builder.Services.AddScoped<AccountSecurityWorkflowService>();
+builder.Services.AddScoped<CommunicationApprovalWorkflowService>();
+builder.Services.AddHostedService<CommunicationOutboxBackgroundService>();
 
 builder.Services.AddRateLimiter(options =>
 {
