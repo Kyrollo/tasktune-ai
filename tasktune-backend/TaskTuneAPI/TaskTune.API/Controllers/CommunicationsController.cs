@@ -16,11 +16,13 @@ public class CommunicationsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly CommunicationApprovalService _approvalService;
 
-    public CommunicationsController(TaskTuneDbContext db, IConfiguration configuration)
+    public CommunicationsController(TaskTuneDbContext db, IConfiguration configuration, CommunicationApprovalService approvalService)
     {
         _db = db;
         _configuration = configuration;
+        _approvalService = approvalService;
     }
 
     [HttpGet]
@@ -263,32 +265,88 @@ public class CommunicationsController : BaseApiController
         }
     }
 
+    [HttpGet("approvals")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> GetApprovals(
+        [FromQuery] string status = "Pending",
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
+    {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+        var normalizedStatus = status.Trim();
+        if (!new[] { "Pending", "Approved", "Rejected" }.Contains(normalizedStatus, StringComparer.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Status must be Pending, Approved, or Rejected." });
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var currentUserId = GetCurrentUserId();
+        var query = _db.CommunicationApprovals.AsNoTracking()
+            .Include(a => a.RequestedByUser)
+            .Where(a => a.CompanyId == companyId.Value && a.Status == normalizedStatus);
+        var total = await query.CountAsync();
+        var rows = await query.OrderByDescending(a => a.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(a => new
+            {
+                a.ApprovalId, a.Subject, a.Body, a.CommunicationType, a.RecipientType,
+                a.RecipientEmailsJson, a.CcEmailsJson, a.Status, a.CreatedAt,
+                a.RequestedByUserId, RequesterName = a.RequestedByUser.FullName
+            }).ToListAsync();
+
+        var items = rows.Select(a =>
+        {
+            var recipients = JsonSerializer.Deserialize<List<string>>(a.RecipientEmailsJson) ?? [];
+            var cc = JsonSerializer.Deserialize<List<string>>(a.CcEmailsJson) ?? [];
+            return new
+            {
+                a.ApprovalId, a.Subject, a.Body,
+                type = GetCommunicationTypeName(a.CommunicationType),
+                a.RecipientType, recipientCount = recipients.Count, recipients, cc,
+                a.Status, a.CreatedAt, a.RequestedByUserId,
+                requesterName = a.RequesterName,
+                canReview = a.RequestedByUserId != currentUserId
+            };
+        });
+        return Ok(new { items, totalCount = total });
+    }
+
     [HttpPost]
     [Authorize(Roles = "HR,CEO,Admin")]
-    public async Task<IActionResult> CreateCommunication([FromBody] CreateCommunicationRequest request)
+    public async Task<IActionResult> CreateCommunication([FromBody] CreateCommunicationRequest request, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
         if (userId == null) return Unauthorized();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
         if (request == null || string.IsNullOrWhiteSpace(request.Subject) ||
-            request.Subject.Length > 200 || string.IsNullOrWhiteSpace(request.Body) || request.Body.Length > 20000)
+            request.Subject.Trim().Length > 200 || string.IsNullOrWhiteSpace(request.Body) || request.Body.Length > 20000)
             return BadRequest(new { message = "Subject (1–200 characters) and body (1–20000 characters) are required." });
+        if (request.IdempotencyKey == Guid.Empty)
+            return BadRequest(new { message = "A valid idempotency key is required. Retry the same request with the same key." });
+
+        var existing = await _db.CommunicationApprovals.AsNoTracking()
+            .Where(a => a.CompanyId == companyId.Value && a.IdempotencyKey == request.IdempotencyKey)
+            .Select(a => new { a.ApprovalId, a.Status, a.CreatedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (existing != null)
+            return Accepted(new
+            {
+                approvalId = existing.ApprovalId, status = existing.Status, createdAt = existing.CreatedAt,
+                duplicate = true, message = "This request was already recorded. No additional message was queued."
+            });
 
         var recipientType = request.RecipientType?.Trim() ?? "Individual";
         if (!new[] { "Individual", "Multiple Employees", "Department", "Company" }
-                .Contains(recipientType, StringComparer.OrdinalIgnoreCase))
+            .Contains(recipientType, StringComparer.OrdinalIgnoreCase))
             return BadRequest(new { message = "Invalid recipient type." });
 
         var communicationType = request.CommunicationType ?? MapCommunicationType(request.Type);
         if (communicationType is < 1 or > 3)
             return BadRequest(new { message = "Invalid communication type." });
 
-        var ccEmails = (request.CcEmails ?? [])
-            .Where(email => !string.IsNullOrWhiteSpace(email))
-            .Select(email => email.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var ccEmails = (request.CcEmails ?? []).Where(email => !string.IsNullOrWhiteSpace(email))
+            .Select(email => email.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ccEmails.Count > 25 || ccEmails.Any(email =>
             !MailAddress.TryCreate(email, out var address) ||
             !string.Equals(address.Address, email, StringComparison.OrdinalIgnoreCase)))
@@ -296,124 +354,143 @@ public class CommunicationsController : BaseApiController
 
         if (ccEmails.Count > 0)
         {
-            var companyCcEmails = await _db.Users
+            var allowedCc = await _db.Users
                 .Where(u => u.CompanyId == companyId.Value && u.IsActive && u.Email != null && ccEmails.Contains(u.Email))
-                .Select(u => u.Email!)
-                .ToListAsync();
-            if (companyCcEmails.Distinct(StringComparer.OrdinalIgnoreCase).Count() != ccEmails.Count)
+                .Select(u => u.Email!).ToListAsync(cancellationToken);
+            if (allowedCc.Distinct(StringComparer.OrdinalIgnoreCase).Count() != ccEmails.Count)
                 return BadRequest(new { message = "CC recipients must be active users in your company." });
         }
 
         List<User> recipientUsers = [];
-        Department? recipientDepartment = null;
-        List<string> recipientEmails = [];
-
         if (recipientType.Equals("Individual", StringComparison.OrdinalIgnoreCase))
         {
             var recipientUser = await ResolveRecipientUser(companyId.Value, request);
-            if (recipientUser == null) return BadRequest(new { message = "Recipient employee was not found." });
+            if (recipientUser == null) return BadRequest(new { message = "Recipient employee was not found in this company." });
             recipientUsers.Add(recipientUser);
-            if (!string.IsNullOrWhiteSpace(recipientUser.Email)) recipientEmails.Add(recipientUser.Email);
         }
         else if (recipientType.Equals("Multiple Employees", StringComparison.OrdinalIgnoreCase))
         {
-            recipientUsers = await ResolveMultipleRecipientUsers(companyId.Value, request.RecipientUserIds);
-            if (recipientUsers.Count == 0) return BadRequest(new { message = "Please choose at least one employee." });
-            recipientEmails = recipientUsers
-                .Select(u => u.Email)
-                .Where(e => !string.IsNullOrWhiteSpace(e))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList()!;
+            var requestedIds = (request.RecipientUserIds ?? []).Distinct().ToArray();
+            if (requestedIds.Length == 0 || requestedIds.Length != (request.RecipientUserIds?.Count ?? 0))
+                return BadRequest(new { message = "Choose one or more unique employees." });
+            recipientUsers = await ResolveMultipleRecipientUsers(companyId.Value, requestedIds.ToList());
+            if (recipientUsers.Count != requestedIds.Length)
+                return BadRequest(new { message = "One or more selected recipients are unavailable in this company." });
         }
         else if (recipientType.Equals("Department", StringComparison.OrdinalIgnoreCase))
         {
-            recipientDepartment = await ResolveRecipientDepartment(companyId.Value, request);
-            if (recipientDepartment == null) return BadRequest(new { message = "Recipient department was not found." });
-            recipientEmails = await _db.Users
-                .Where(u => u.CompanyId == companyId.Value && u.DepartmentId == recipientDepartment.DepartmentId && u.IsActive)
-                .Select(u => u.Email)
-                .Where(e => e != null && e != "")
-                .ToListAsync();
+            var department = await ResolveRecipientDepartment(companyId.Value, request);
+            if (department == null) return BadRequest(new { message = "Recipient department was not found in this company." });
+            recipientUsers = await _db.Users
+                .Where(u => u.CompanyId == companyId.Value && u.DepartmentId == department.DepartmentId && u.IsActive)
+                .OrderBy(u => u.UserId).ToListAsync(cancellationToken);
         }
         else
         {
-            recipientEmails = await _db.Users
-                .Where(u => u.CompanyId == companyId.Value && u.IsActive)
-                .Select(u => u.Email)
-                .Where(e => e != null && e != "")
-                .ToListAsync();
+            recipientUsers = await _db.Users.Where(u => u.CompanyId == companyId.Value && u.IsActive)
+                .OrderBy(u => u.UserId).ToListAsync(cancellationToken);
         }
 
-        var emailResult = await TrySendEmailsAsync(recipientEmails, request.CcEmails, request.Subject, request.Body);
+        if (recipientUsers.Count == 0)
+            return BadRequest(new { message = "The selected audience has no active recipients." });
+        if (recipientUsers.Count > 1000)
+            return BadRequest(new { message = "A communication request cannot exceed 1,000 recipients." });
+        if (recipientUsers.Any(u => string.IsNullOrWhiteSpace(u.Email) || !MailAddress.TryCreate(u.Email, out _)))
+            return BadRequest(new { message = "Every selected recipient must have a valid email address before submission." });
 
-        var logs = new List<CommunicationLog>();
-        if (recipientUsers.Count > 0)
+        var recipientEmails = recipientUsers.Select(u => u.Email!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var approval = new CommunicationApproval
         {
-            logs.AddRange(recipientUsers.Select(recipientUser => new CommunicationLog
-            {
-                CompanyId = companyId.Value,
-                SentBy = userId.Value,
-                RecipientUserId = recipientUser.UserId,
-                RecipientDepartmentId = null,
-                CommunicationType = communicationType,
-                Subject = request.Subject.Trim(),
-                Body = request.Body.Trim(),
-                SentAt = DateTime.UtcNow
-            }));
-        }
-        else
-        {
-            logs.Add(new CommunicationLog
-            {
-                CompanyId = companyId.Value,
-                SentBy = userId.Value,
-                RecipientUserId = null,
-                RecipientDepartmentId = recipientDepartment?.DepartmentId,
-                CommunicationType = communicationType,
-                Subject = request.Subject.Trim(),
-                Body = request.Body.Trim(),
-                SentAt = DateTime.UtcNow
-            });
-        }
+            CompanyId = companyId.Value,
+            RequestedByUserId = userId.Value,
+            CommunicationType = communicationType,
+            RecipientType = recipientType,
+            RecipientEmailsJson = JsonSerializer.Serialize(recipientEmails),
+            CcEmailsJson = JsonSerializer.Serialize(ccEmails),
+            Subject = request.Subject.Trim(),
+            Body = request.Body.Trim(),
+            Status = "Pending",
+            IdempotencyKey = request.IdempotencyKey,
+            CreatedAt = DateTime.UtcNow
+        };
 
-        _db.CommunicationLogs.AddRange(logs);
+        _db.CommunicationApprovals.Add(approval);
         _db.AIActionsLogs.Add(new AIActionsLog
         {
-            ActionType = 5,
-            UserId = userId.Value,
+            ActionType = 5, UserId = userId.Value,
             InputData = JsonSerializer.Serialize(new
             {
-                recipientType,
-                recipientUserIds = request.RecipientUserIds,
-                request.RecipientDepartmentId,
-                request.Recipient,
-                request.CcEmails,
-                request.RecommendationUsed
+                recipientType, recipientCount = recipientEmails.Count,
+                ccCount = ccEmails.Count, request.RecommendationUsed
             }),
-            OutputData = emailResult.success ? "Email processed successfully." : $"Email saved, SMTP skipped: {emailResult.error}",
-            ModelVersion = "agent5_email",
-            Timestamp = DateTime.UtcNow
+            OutputData = "Communication approval requested; no external delivery was attempted.",
+            ModelVersion = "communication_approval", Timestamp = DateTime.UtcNow
         });
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(cancellationToken);
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId.Value,
+            "communication.requested", "CommunicationApproval", approval.ApprovalId,
+            after: new { status = approval.Status, recipientCount = recipientEmails.Count });
 
-        var primaryLog = logs.First();
-        return StatusCode(201, new
+        return Accepted(new
         {
-            primaryLog.CommunicationId,
-            id = primaryLog.CommunicationId,
-            type = GetCommunicationTypeName(primaryLog.CommunicationType),
-            status = emailResult.success ? "Sent" : "PendingApproval",
-            recipientType,
-            recipient = recipientUsers.Count > 0
-                ? string.Join(", ", recipientUsers.Select(u => u.FullName ?? (u.FirstName + " " + u.LastName)))
-                : recipientDepartment?.DepartmentName ?? "All Employees",
-            subject = primaryLog.Subject,
-            message = primaryLog.Body,
-            sentAt = primaryLog.SentAt,
-            count = logs.Count,
-            emailResult.success,
-            emailResult.error
+            approvalId = approval.ApprovalId, status = approval.Status,
+            recipientCount = recipientEmails.Count, createdAt = approval.CreatedAt,
+            message = "Communication submitted for approval. No email has been sent."
         });
+    }
+
+    [HttpPost("approvals/{approvalId:int}/approve")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> ApproveCommunication(int approvalId, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (userId == null || companyId == null) return Unauthorized();
+
+        var result = await _approvalService.ApproveAsync(approvalId, companyId.Value, userId.Value, cancellationToken);
+        if (result == CommunicationApprovalResult.NotFound) return NotFound();
+        if (result == CommunicationApprovalResult.CannotReviewOwnRequest)
+            return Conflict(new { message = "The requester cannot approve their own communication." });
+        if (result == CommunicationApprovalResult.AlreadyReviewed)
+            return Conflict(new { message = "This communication has already been reviewed." });
+        if (result != CommunicationApprovalResult.Success)
+            return Conflict(new { message = "The approval could not be completed. Refresh the queue and try again." });
+
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId.Value,
+            "communication.approved", "CommunicationApproval", approvalId,
+            after: new { status = "Approved", deliveryStatus = "Pending" });
+        return Ok(new
+        {
+            approvalId, status = "Approved", deliveryStatus = "Pending",
+            message = "Approved and added to the durable delivery outbox. Delivery remains disabled until the outbox worker is enabled."
+        });
+    }
+
+    [HttpPost("approvals/{approvalId:int}/reject")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> RejectCommunication(int approvalId, [FromBody] RejectCommunicationRequest request, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (userId == null || companyId == null) return Unauthorized();
+        var reason = request?.Reason?.Trim() ?? string.Empty;
+        if (reason.Length < 5 || reason.Length > 1000)
+            return BadRequest(new { message = "A rejection reason between 5 and 1,000 characters is required." });
+
+        var result = await _approvalService.RejectAsync(approvalId, companyId.Value, userId.Value, reason, cancellationToken);
+        if (result == CommunicationApprovalResult.NotFound) return NotFound();
+        if (result == CommunicationApprovalResult.CannotReviewOwnRequest)
+            return Conflict(new { message = "The requester cannot reject their own communication." });
+        if (result == CommunicationApprovalResult.AlreadyReviewed)
+            return Conflict(new { message = "This communication has already been reviewed." });
+        if (result != CommunicationApprovalResult.Success)
+            return Conflict(new { message = "The communication could not be rejected. Refresh the queue and try again." });
+
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId.Value,
+            "communication.rejected", "CommunicationApproval", approvalId,
+            after: new { status = "Rejected", reason });
+        return Ok(new { approvalId, status = "Rejected", message = "Communication rejected. No email was sent." });
     }
 
     private async Task<User?> ResolveRecipientUser(int companyId, CreateCommunicationRequest request)
@@ -544,8 +621,14 @@ public class CreateCommunicationRequest
     public byte? CommunicationType { get; set; }
     public List<string>? CcEmails { get; set; }
     public bool RecommendationUsed { get; set; }
+    public Guid IdempotencyKey { get; set; }
     public string Subject { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+}
+
+public sealed class RejectCommunicationRequest
+{
+    public string? Reason { get; set; }
 }
 
 public class CommunicationRecommendationRequest

@@ -85,3 +85,38 @@ This record tracks implementation against the product and engineering plan. It s
 ## Release posture
 
 This repository has passing CI evidence for the implemented phases, but CI does **not** establish production readiness. The account-security SQL migration must be applied and verified on a backed-up deployment database; production SMTP, stable encryption keys, legacy file migration, communication approval, dependency remediation, backup/restore, telemetry, and independent security review remain release gates.
+
+
+## Completed — phase 7 foundation: communication approvals and durable outbox staging
+
+- Added tenant-scoped communication approval records with requester, recipient/CC snapshots, content, status, timestamps, rowversion and caller-supplied idempotency key.
+- Enforced same-tenant recipient selection, unique recipient IDs, maximum audience size, valid recipient email addresses and active same-tenant CC allowlisting.
+- Added HR/CEO/Admin approval and rejection endpoints. Requesters cannot approve or reject their own messages; rejection requires a reason.
+- Approval state and all recipient outbox rows are committed in one EF Core SaveChanges transaction. Outbox records use deterministic SHA-256 idempotency keys with a database unique index.
+- Added the SQL Server migration `20261117_003_communication_approval_outbox.sql`, EF entities, indexes and tenant query filters.
+- Updated the Communication Center to submit for approval, inspect the pending queue, approve or reject requests, and accurately state that submission does not mean delivery.
+- **Not enabled:** this change does not run an outbox dispatcher and does not send external email. Delivery retries, atomic claim/lease logic, dead-letter handling, reconciliation and deployment configuration remain release gates.
+
+## Verification for phase 7 foundation
+
+- Added regression tests for maker-checker separation, tenant scoping, one-time approval/rejection, per-recipient outbox creation and deterministic idempotency keys.
+- GitHub Actions verification is triggered by the grouped implementation commit; results will be recorded only after the run completes.
+- SQL Server migration application and rowversion concurrency must be verified against the CI SQL Server and then rehearsed in a backed-up deployment environment.
+
+## Remaining implementation and production gates
+
+1. Finish the exhaustive authorization matrix covering endpoints, raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Add negative tests for each privileged boundary and cross-tenant resource.
+2. Expand SQL Server schema and migration coverage: relationship-owned query filters, composite foreign keys, transactions, rowversion races, migration repeatability, forward compatibility and backup/restore rehearsal.
+3. Build a private legacy attachment migration utility with inventory, checksum validation, traversal/symlink protection, transactional metadata updates and a rollback manifest. Do not delete old files before verification and backup.
+4. Implement the outbox dispatcher with atomic SQL Server claim/lease semantics, retry/backoff with jitter, max-attempt dead-letter handling, idempotent provider delivery, reconciliation, redacted logs and per-tenant quotas. Keep it disabled by default.
+5. Complete outbound recipient policy, approval notifications, bounce handling and delivery audit. Production SMTP must remain disabled until end-to-end staging tests pass.
+6. Finish AI tool authorization, RAG document ACL enforcement, provider capability registry, usage budgets, egress allowlisting and managed secret-vault integration; verify prompt-injection and cross-tenant adversarial scenarios.
+7. Add enterprise MFA/SSO, frontend BFF/HttpOnly cookie migration, CSRF controls and privileged-account access reviews.
+8. Triage dependency advisories with targeted upgrades, lockfile/SBOM/provenance checks, license ownership review and secret-history rotation.
+9. Add OpenTelemetry traces/metrics, security and cost alerts, health probes, status/support runbooks, encrypted off-host backups and proven restore drills.
+10. Complete privacy/retention and first-country payroll legal/accounting reviews, then run independent penetration testing and a risk-based E2E release campaign.
+11. Only after critical gates pass, complete P8 launch readiness. P9 expansion (additional countries, dedicated tenancy, customer-hosted deployment, offline mobile and data warehouse) remains staged.
+
+## Release posture
+
+Phase 7 provides durable approval and delivery staging, not actual delivery. CI success alone is not production readiness. Do not enable outbound SMTP or load customer production data until dispatcher, migration/restore, tenant isolation, recipient policy, dependency, monitoring, backup and independent security gates are verified.

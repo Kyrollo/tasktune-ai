@@ -15,6 +15,11 @@ const fallbackTemplates = [
 
 export default function CommunicationCenter() {
   const [communications, setCommunications] = useState([]);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [approvalReasons, setApprovalReasons] = useState({});
+  const [approvalBusyId, setApprovalBusyId] = useState(null);
+  const [approvalError, setApprovalError] = useState('');
+  const [idempotencyKey, setIdempotencyKey] = useState(() => window.crypto.randomUUID());
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [templatesList, setTemplatesList] = useState(fallbackTemplates);
@@ -43,13 +48,19 @@ export default function CommunicationCenter() {
     setCommunications(Array.isArray(data) ? data : data?.items ?? []);
   };
 
+  const refreshApprovals = async () => {
+    const { data } = await communicationService.getApprovals();
+    setPendingApprovals(data?.items ?? []);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [commsRes, usersRes, overviewRes] = await Promise.all([
+        const [commsRes, usersRes, overviewRes, approvalsRes] = await Promise.all([
           communicationService.getCommunications(),
           userService.getUsers(),
           communicationService.getOverview().catch(() => ({ data: null })),
+          communicationService.getApprovals().catch(() => ({ data: { items: [] } })),
         ]);
         const commsData = commsRes.data;
         const usersData = usersRes.data;
@@ -59,6 +70,7 @@ export default function CommunicationCenter() {
         setTemplatesList(overviewRes.data?.templates?.length ? overviewRes.data.templates : fallbackTemplates);
         setAgentInfo(overviewRes.data?.agent || null);
         setStats(overviewRes.data?.stats || { totalSent: 0, scheduled: 0 });
+        setPendingApprovals(approvalsRes.data?.items ?? []);
       } catch (err) {
         console.error('Failed to load communications:', err);
       } finally {
@@ -130,6 +142,7 @@ export default function CommunicationCenter() {
         recipientType,
         type: commType,
         communicationType: commType,
+        idempotencyKey,
         recipientUserId: recipientType === 'Individual' ? (selectedUser?.userId ?? selectedUser?.id ?? null) : null,
         recipientUserIds: recipientType === 'Multiple Employees' ? multiUsers.map((u) => u.userId ?? u.id) : [],
         recipientDepartmentId: recipientType === 'Department' ? (selectedDepartment?.departmentId ?? selectedDepartment?.id ?? null) : null,
@@ -140,9 +153,9 @@ export default function CommunicationCenter() {
         recommendationUsed: Boolean(recommendation),
       });
 
-      await refreshCommunications();
-      setStats((prev) => ({ ...prev, totalSent: (prev.totalSent || 0) + 1 }));
+      await Promise.all([refreshCommunications(), refreshApprovals()]);
       setSent(true);
+      setIdempotencyKey(window.crypto.randomUUID());
       setSubject('');
       setMessage('');
       setPrompt('');
@@ -159,6 +172,38 @@ export default function CommunicationCenter() {
     }
   };
 
+
+  const handleApprove = async (approvalId) => {
+    try {
+      setApprovalBusyId(approvalId);
+      setApprovalError('');
+      await communicationService.approveCommunication(approvalId);
+      await refreshApprovals();
+    } catch (err) {
+      setApprovalError(err.response?.data?.message || 'Approval failed. Refresh the queue and try again.');
+    } finally {
+      setApprovalBusyId(null);
+    }
+  };
+
+  const handleReject = async (approvalId) => {
+    const reason = (approvalReasons[approvalId] || '').trim();
+    if (reason.length < 5) {
+      setApprovalError('Enter a rejection reason of at least 5 characters.');
+      return;
+    }
+    try {
+      setApprovalBusyId(approvalId);
+      setApprovalError('');
+      await communicationService.rejectCommunication(approvalId, reason);
+      setApprovalReasons((current) => ({ ...current, [approvalId]: '' }));
+      await refreshApprovals();
+    } catch (err) {
+      setApprovalError(err.response?.data?.message || 'Rejection failed. Refresh the queue and try again.');
+    } finally {
+      setApprovalBusyId(null);
+    }
+  };
   if (loading) return (
     <AppLayout title="Communication Center">
       <div className="flex items-center justify-center h-64"><div className="text-text-secondary">Loading...</div></div>
@@ -183,7 +228,7 @@ export default function CommunicationCenter() {
                 <p className="text-sm text-text-secondary mt-1">
                   {agentInfo?.enabled
                     ? `Agent 5 Email is connected as ${agentInfo.senderEmail || 'your configured sender'}.`
-                    : 'Agent 5 Email recommendations are available, and sent messages will still be saved in backend history.'}
+                    : 'Agent 5 can prepare drafts. Every outbound communication requires approval before it enters the delivery queue.'}
                 </p>
               </div>
               <Badge variant={agentInfo?.enabled ? 'success' : 'warning'}>
@@ -194,8 +239,8 @@ export default function CommunicationCenter() {
             {sent ? (
               <div className="text-center py-8">
                 <Send size={40} className="text-success mx-auto mb-3" />
-                <h4 className="text-lg font-medium text-text-primary mb-2">Message Sent!</h4>
-                <p className="text-sm text-text-secondary mb-4">Your communication has been delivered and logged.</p>
+                <h4 className="text-lg font-medium text-text-primary mb-2">Request Submitted for Approval</h4>
+                <p className="text-sm text-text-secondary mb-4">The message is awaiting a separate approver. No email has been sent.</p>
                 <Button onClick={() => setSent(false)}>Compose Another</Button>
               </div>
             ) : (
@@ -354,7 +399,7 @@ export default function CommunicationCenter() {
 
                 <div className="flex items-center gap-3 flex-wrap">
                   <Button onClick={handleSend} disabled={submitting || !canSend}>
-                    <span className="flex items-center gap-2"><Send size={16} /> {submitting ? 'Sending...' : 'Send Now'}</span>
+                    <span className="flex items-center gap-2"><Send size={16} /> {submitting ? 'Submitting...' : 'Submit for Approval'}</span>
                   </Button>
                   <Button variant="secondary" onClick={handleGetRecommendation} disabled={recommending}>
                     <span className="flex items-center gap-2"><Sparkles size={16} /> {recommending ? 'Generating...' : 'AI Recommendation'}</span>
@@ -369,6 +414,69 @@ export default function CommunicationCenter() {
         </div>
 
         <div className="space-y-4">
+          <Card>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-base font-semibold text-text-primary">Pending Approvals</h3>
+              <Badge variant="warning">{pendingApprovals.length} pending</Badge>
+            </div>
+            {approvalError && <p className="text-sm text-danger mb-3">{approvalError}</p>}
+            {pendingApprovals.length === 0 ? (
+              <p className="text-sm text-text-muted">No communication requests are waiting for approval.</p>
+            ) : (
+              <div className="space-y-3">
+                {pendingApprovals.map((approval) => (
+                  <div key={approval.approvalId} className="p-3 bg-bg rounded-lg border border-border/50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">{approval.subject}</p>
+                        <p className="text-xs text-text-muted mt-1">
+                          Requested by {approval.requesterName || 'Company user'} · {approval.recipientCount} recipient(s)
+                        </p>
+                        <p className="text-xs text-text-muted mt-1">
+                          {approval.createdAt ? new Date(approval.createdAt).toLocaleString() : '—'} · {approval.type}
+                        </p>
+                      </div>
+                      <Badge variant="warning">Pending</Badge>
+                    </div>
+                    <details className="mt-3">
+                      <summary className="text-xs text-text-secondary cursor-pointer">Review message and recipients</summary>
+                      <p className="text-sm text-text-primary whitespace-pre-wrap mt-2">{approval.body}</p>
+                      <p className="text-xs text-text-muted mt-2 break-all">To: {(approval.recipients || []).join(', ')}</p>
+                      {(approval.cc || []).length > 0 && (
+                        <p className="text-xs text-text-muted mt-1 break-all">CC: {approval.cc.join(', ')}</p>
+                      )}
+                    </details>
+                    {approval.canReview ? (
+                      <div className="mt-3 space-y-2">
+                        <textarea
+                          value={approvalReasons[approval.approvalId] || ''}
+                          onChange={(event) => setApprovalReasons((current) => ({ ...current, [approval.approvalId]: event.target.value }))}
+                          rows={2}
+                          maxLength={1000}
+                          placeholder="Rejection reason (required only when rejecting)"
+                          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" onClick={() => handleApprove(approval.approvalId)} disabled={approvalBusyId !== null}>
+                            {approvalBusyId === approval.approvalId ? 'Processing...' : 'Approve'}
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => handleReject(approval.approvalId)} disabled={approvalBusyId !== null || (approvalReasons[approval.approvalId] || '').trim().length < 5}>
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-warning mt-3">You submitted this request and cannot approve or reject it.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-text-muted mt-3">
+              Approval creates durable delivery records. This environment does not send external email until the delivery worker is separately enabled.
+            </p>
+          </Card>
+
           <Card>
             <h3 className="text-base font-semibold text-text-primary mb-3">Communication History</h3>
             <div className="space-y-3">

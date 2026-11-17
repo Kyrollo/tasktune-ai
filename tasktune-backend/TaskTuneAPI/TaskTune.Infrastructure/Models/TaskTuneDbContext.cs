@@ -29,6 +29,8 @@ public partial class TaskTuneDbContext : DbContext
     public virtual DbSet<ChatThread> ChatThreads { get; set; }
 
     public virtual DbSet<CommunicationLog> CommunicationLogs { get; set; }
+    public virtual DbSet<CommunicationApproval> CommunicationApprovals { get; set; }
+    public virtual DbSet<CommunicationOutbox> CommunicationOutbox { get; set; }
 
     public virtual DbSet<Company> Companies { get; set; }
 
@@ -221,6 +223,43 @@ public partial class TaskTuneDbContext : DbContext
                 .HasForeignKey(d => d.SentBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_CommunicationLog_SentBy");
+        });
+
+        modelBuilder.Entity<CommunicationApproval>(entity =>
+        {
+            entity.ToTable("CommunicationApprovals");
+            entity.HasKey(e => e.ApprovalId);
+            entity.HasAlternateKey(e => new { e.ApprovalId, e.CompanyId });
+            entity.Property(e => e.RecipientType).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.Subject).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.RecipientEmailsJson).IsRequired();
+            entity.Property(e => e.CcEmailsJson).IsRequired();
+            entity.Property(e => e.RejectionReason).HasMaxLength(1000);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => new { e.CompanyId, e.IdempotencyKey }).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.Status, e.CreatedAt });
+            entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.RequestedByUser).WithMany().HasForeignKey(e => e.RequestedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.ReviewedByUser).WithMany().HasForeignKey(e => e.ReviewedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<CommunicationOutbox>(entity =>
+        {
+            entity.ToTable("CommunicationOutbox");
+            entity.HasKey(e => e.OutboxId);
+            entity.Property(e => e.RecipientEmail).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Subject).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).IsFixedLength();
+            entity.Property(e => e.LastError).HasMaxLength(2000);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.Status, e.NextAttemptAt });
+            entity.HasOne(e => e.Approval).WithMany()
+                .HasForeignKey(e => new { e.ApprovalId, e.CompanyId })
+                .HasPrincipalKey(e => new { e.ApprovalId, e.CompanyId })
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<Company>(entity =>
@@ -643,6 +682,11 @@ public partial class TaskTuneDbContext : DbContext
             && e.SentByNavigation.CompanyId == TenantIdOrDefault
             && (!e.RecipientUserId.HasValue || e.RecipientUser.CompanyId == TenantIdOrDefault)
             && (!e.RecipientDepartmentId.HasValue || e.RecipientDepartment.CompanyId == TenantIdOrDefault));
+        modelBuilder.Entity<CommunicationApproval>().HasQueryFilter(e =>
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<CommunicationOutbox>().HasQueryFilter(e =>
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault
+            && e.Approval.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<Task>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.Project.CompanyId == TenantIdOrDefault
             && e.AssignedToNavigation.CompanyId == TenantIdOrDefault
