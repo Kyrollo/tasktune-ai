@@ -6,6 +6,7 @@ using TaskTune.Infrastructure.Models;
 namespace TaskTune.API.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/health")]
 public class HealthCheckController : ControllerBase
 {

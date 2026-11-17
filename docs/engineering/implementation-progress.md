@@ -160,3 +160,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Run #76 caught a compile-time issue in the generic test helper that attempted to call the non-generic EF `DbContext.Set(Type)` API. The redundant dynamic-set test was removed; existing fail-closed behavior remains covered by `TenantIsolationTests.MissingTenantContext_FailsClosed`, while the new metadata test continues to assert filters on every listed tenant-owned type.
 - The corrected grouped fix is being revalidated by the full GitHub Actions workflow before the authorization audit gate is considered green.
+
+
+## Authorization metadata CI correction — health probes
+
+- Run #77 confirmed the test helper compiles and the EF filter metadata test passes, but the new authorization test correctly exposed three health actions (live, ready, compatibility check) that were not declared anonymous after the health controller had been split into separate probe routes.
+- The health controller is intentionally public for orchestrator probes; it now declares class-level `[AllowAnonymous]`, and all three actions are explicitly included in the reviewed allow-list and endpoint documentation.
+- CI is being rerun against the updated grouped changes. No health endpoint returns tenant data or infrastructure connection details.

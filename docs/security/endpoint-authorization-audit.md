@@ -14,7 +14,9 @@ Only the following actions are intentionally anonymous. Each carries an explicit
 | AuthController.ForgotPassword | `POST /api/auth/forgot-password` | IP rate limit; generic account-existence response |
 | AuthController.ResetPassword | `POST /api/auth/reset-password` | IP rate limit; single-use, expiring token |
 | AuthController.Register | `POST /api/auth/register` | IP rate limit; invitation token and email binding; no self-service company creation |
-| HealthCheckController.Check | `GET /api/health` | Returns coarse application/database health only; no tenant payload |
+| HealthCheckController.Live | `GET /api/health/live` | Liveness only; no dependency call or tenant data |
+| HealthCheckController.Ready | `GET /api/health/ready` | Dependency-aware readiness; no connection details or tenant payload |
+| HealthCheckController.Check | `GET /api/health` | Backward-compatible readiness response; no tenant payload |
 
 Logout and device-session listing/revocation require authentication. No controller is intended to inherit anonymous access.
 

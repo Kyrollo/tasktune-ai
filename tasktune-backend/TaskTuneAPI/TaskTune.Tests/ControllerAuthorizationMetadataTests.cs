@@ -16,6 +16,8 @@ public sealed class ControllerAuthorizationMetadataTests
         "AuthController.ForgotPassword",
         "AuthController.ResetPassword",
         "AuthController.Register",
+        "HealthCheckController.Live",
+        "HealthCheckController.Ready",
         "HealthCheckController.Check"
     };
 
