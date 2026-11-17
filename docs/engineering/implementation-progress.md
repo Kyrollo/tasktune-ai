@@ -188,3 +188,9 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Run #79 confirmed the API and attachment utility compile, but the new test file imported the TaskTune domain namespace containing an entity named `Task`, making unqualified test method return types ambiguous with `System.Threading.Tasks.Task`.
 - Qualified the test method return types explicitly. No production code behavior or outbox schema changed in this correction; the complete workflow is being rerun.
+
+
+## Dead-letter replay CI correction — ASP.NET HTTP test reference
+
+- Run #80 confirms API build and attachment-tool build, plus frontend/Python jobs, succeeded. The test project itself needed an explicit `Microsoft.AspNetCore.Http` import for `DefaultHttpContext` in the new replay-service tests.
+- Added the missing import; production code and replay behavior are unchanged. Full CI is rerunning.
