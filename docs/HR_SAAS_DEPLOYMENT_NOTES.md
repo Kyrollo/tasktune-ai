@@ -32,19 +32,22 @@ Run these scripts in order, once per database. They are intended to be additive 
    - Allows negative `storage_bytes` events when a metered file is deleted. Other usage meters must remain positive.
 5. `20261117_AlignReportModuleEntitlements.sql`
    - Normalizes older plan records to the canonical `reports` module code.
+6. `20261117_AddAttendanceAndShiftManagement.sql`
+   - Work shifts, effective-dated employee shift assignments and UTC attendance punches.
 
 Do not run the old destructive database setup script against a production database.
 
 ## 3. First-time company setup
 
 1. Log in as a company Admin or CEO and open **Leave Management**.
-2. Configure the company's weekend days (one to three days), add company holidays, create the required leave types and allocate annual balances to employees.
-3. Open **Subscription & Usage** as a company Admin/CEO to view the assigned plan and current measured usage.
-4. The platform operator assigns or changes a tenant plan through the secret-protected API:
+2. Configure the company's weekend days, company time zone (for example `Africa/Cairo`), add company holidays, create leave types and allocate annual balances to employees.
+3. In **Attendance & Shifts**, create work shifts and assign them to employees with the correct weekdays and effective dates before enabling clock-in/out.
+4. Open **Subscription & Usage** as a company Admin/CEO to view the assigned plan and current measured usage.
+5. The platform operator assigns or changes a tenant plan through the secret-protected API:
    - `GET /api/platform/plans`
    - `PUT /api/platform/tenants/{companyId}/subscription`
    - Send the `X-Platform-Admin-Key` header using the `PLATFORM_ADMIN_API_KEY` secret.
-5. Keep each AI provider encryption key stable. Changing `AI_PROVIDER_ENCRYPTION_KEY` makes existing encrypted provider keys unreadable unless the original key is restored or a controlled key-rotation migration is performed.
+6. Keep each AI provider encryption key stable. Changing `AI_PROVIDER_ENCRYPTION_KEY` makes existing encrypted provider keys unreadable unless the original key is restored or a controlled key-rotation migration is performed.
 
 ## 4. Current enforcement and metering behavior
 
@@ -59,4 +62,4 @@ Do not run the old destructive database setup script against a production databa
 
 The subscription foundation does not yet initiate or receive real payments. Payment-provider checkout, verified webhook processing, invoice/receipt generation, plan self-service upgrades and dunning are still separate work. The platform operator endpoint is an internal control, not a payment gateway.
 
-Country-specific payroll calculations, attendance hardware integrations, biometric capture, recruitment lifecycle, benefits and asset/expense management are also not included in this release slice.
+Country-specific payroll calculations, attendance hardware integrations, biometric capture, absence/no-show generation and biometric imports, recruitment lifecycle, benefits and asset/expense management are not included in this release slice.
