@@ -269,7 +269,7 @@ public sealed class LeaveController : BaseApiController
                         x.HolidayDate >= request.StartDate && x.HolidayDate <= request.EndDate)
             .Select(x => x.HolidayDate)
             .ToListAsync();
-        var daysByYear = CountWorkingDaysByYear(request.StartDate, request.EndDate, holidays);
+        var daysByYear = LeaveCalendarCalculator.CountWorkingDaysByYear(request.StartDate, request.EndDate, holidays);
         var totalDays = daysByYear.Values.Sum();
         if (totalDays <= 0)
             return BadRequest(new { message = "The selected date range contains no working days." });
@@ -642,19 +642,6 @@ public sealed class LeaveController : BaseApiController
             .ToListAsync();
 
         return new { items, totalCount = total, page, pageSize };
-    }
-
-    private static decimal CountWorkingDays(DateOnly start, DateOnly end, IReadOnlyCollection<DateOnly> holidays)
-    {
-        var holidaySet = holidays.ToHashSet();
-        var count = 0;
-        for (var day = start; day <= end; day = day.AddDays(1))
-        {
-            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
-            if (holidaySet.Contains(day)) continue;
-            count++;
-        }
-        return count;
     }
 
     private static bool ValidPaging(int page, int pageSize) => page >= 1 && pageSize is >= 1 and <= 100;
