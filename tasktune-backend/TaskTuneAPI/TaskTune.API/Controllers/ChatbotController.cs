@@ -10,6 +10,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/chatbot")]
+[RequireModule("ai_assistant")]
 [Authorize]
 public class ChatbotController : BaseApiController
 {
