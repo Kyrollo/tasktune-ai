@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Infrastructure.Models;
 using Xunit;
@@ -118,6 +119,113 @@ public sealed class SqlServerTenantIsolationTests
         {
             await using var cleanup = new TaskTuneDbContext(options, new FixedTenantContext(null));
             await cleanup.Database.EnsureDeletedAsync();
+        }
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SqlServer_CommunicationApprovalMigrationIsIdempotent()
+    {
+        var source = Environment.GetEnvironmentVariable("TASKTUNE_SQLSERVER_TEST_CONNECTION");
+        Assert.False(string.IsNullOrWhiteSpace(source),
+            "TASKTUNE_SQLSERVER_TEST_CONNECTION must be configured by the SQL Server CI service.");
+
+        var databaseName = $"TaskTuneCommunicationMigration_{Guid.NewGuid():N}";
+        var masterConnection = new SqlConnectionStringBuilder(source!)
+        {
+            InitialCatalog = "master"
+        };
+
+        await using (var master = new SqlConnection(masterConnection.ConnectionString))
+        {
+            await master.OpenAsync();
+            await using var create = new SqlCommand($"CREATE DATABASE [{databaseName}]", master);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            var targetConnection = new SqlConnectionStringBuilder(masterConnection.ConnectionString)
+            {
+                InitialCatalog = databaseName
+            };
+            await using var connection = new SqlConnection(targetConnection.ConnectionString);
+            await connection.OpenAsync();
+
+            const string prerequisiteSchema = """
+                CREATE TABLE dbo.Companies (CompanyId INT NOT NULL PRIMARY KEY);
+                CREATE TABLE dbo.Users (UserId INT NOT NULL PRIMARY KEY);
+                CREATE TABLE dbo.Departments (DepartmentId INT NOT NULL PRIMARY KEY);
+                CREATE TABLE dbo.Positions (PositionId INT NOT NULL PRIMARY KEY);
+                CREATE TABLE dbo.CommunicationLog (CommunicationId INT NOT NULL PRIMARY KEY);
+                """;
+            await using (var prerequisites = new SqlCommand(prerequisiteSchema, connection))
+                await prerequisites.ExecuteNonQueryAsync();
+
+            var migrationRelativePath = Path.Combine(
+                "tasktune-backend",
+                "Script Database",
+                "Migrations",
+                "20261117_003_communication_approval_outbox.sql");
+            var searchDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+            string? migrationPath = null;
+            while (searchDirectory != null)
+            {
+                var candidate = Path.Combine(searchDirectory.FullName, migrationRelativePath);
+                if (File.Exists(candidate))
+                {
+                    migrationPath = candidate;
+                    break;
+                }
+                searchDirectory = searchDirectory.Parent;
+            }
+            Assert.False(string.IsNullOrWhiteSpace(migrationPath),
+                $"Unable to locate the migration script from {AppContext.BaseDirectory}.");
+            var script = await File.ReadAllTextAsync(migrationPath);
+            var batches = Regex.Split(script, @"^\s*GO\s*$",
+                    RegexOptions.Multiline | RegexOptions.IgnoreCase)
+                .Where(batch => !string.IsNullOrWhiteSpace(batch));
+
+            foreach (var batch in batches)
+            {
+                await using var command = new SqlCommand(batch, connection);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            // Re-execution must be a no-op, including all named indexes and constraints.
+            foreach (var batch in Regex.Split(script, @"^\s*GO\s*$",
+                         RegexOptions.Multiline | RegexOptions.IgnoreCase)
+                     .Where(batch => !string.IsNullOrWhiteSpace(batch)))
+            {
+                await using var command = new SqlCommand(batch, connection);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            const string verifySql = """
+                SELECT
+                    CASE WHEN OBJECT_ID(N'dbo.CommunicationApprovals', N'U') IS NULL THEN 0 ELSE 1 END,
+                    CASE WHEN OBJECT_ID(N'dbo.CommunicationOutbox', N'U') IS NULL THEN 0 ELSE 1 END,
+                    CASE WHEN COL_LENGTH(N'dbo.CommunicationApprovals', N'IdempotencyKey') IS NULL THEN 0 ELSE 1 END,
+                    (SELECT COUNT(*) FROM sys.foreign_keys
+                     WHERE name = N'FK_CommunicationOutbox_Communications'
+                       AND referenced_object_id = OBJECT_ID(N'dbo.CommunicationLog'));
+                """;
+            await using var verify = new SqlCommand(verifySql, connection);
+            await using var reader = await verify.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(1, reader.GetInt32(0));
+            Assert.Equal(1, reader.GetInt32(1));
+            Assert.Equal(1, reader.GetInt32(2));
+            Assert.Equal(1, reader.GetInt32(3));
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(masterConnection.ConnectionString);
+            await cleanup.OpenAsync();
+            var safeName = databaseName.Replace("]", "]]", StringComparison.Ordinal);
+            await using var drop = new SqlCommand(
+                $"ALTER DATABASE [{safeName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{safeName}];",
+                cleanup);
+            await drop.ExecuteNonQueryAsync();
         }
     }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import AppLayout from '../../layouts/AppLayout';
 import { Card, Button, Badge } from '../../components/ui';
@@ -15,6 +15,7 @@ const fallbackTemplates = [
 ];
 
 export default function CommunicationCenter() {
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
   const { user } = useAuth();
   const canApprove = ['CEO', 'Admin'].includes(user?.role);
   const [communications, setCommunications] = useState([]);
@@ -174,8 +175,10 @@ export default function CommunicationCenter() {
         body: message,
         ccEmails,
         recommendationUsed: Boolean(recommendation),
+        idempotencyKey: idempotencyKeyRef.current,
       });
 
+      idempotencyKeyRef.current = crypto.randomUUID();
       await refreshCommunications();
       setStats((prev) => ({
         ...prev,

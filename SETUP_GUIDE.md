@@ -145,3 +145,17 @@ dotnet user-secrets set "Email:Smtp:EnableSsl" "true"
 ~~~
 
 For local development, use an HTTPS localhost origin or a local SMTP test sink. The app now rate-limits login, refresh, registration, password-reset, and reset-token endpoints per client IP. Company creation remains disabled; new users can only register using a valid one-time company invitation.
+
+
+## Database migrations
+
+Back up the target database first, then apply the scripts in order using SQL Server Management Studio or `sqlcmd`:
+
+~~~powershell
+sqlcmd -S <sql-server> -d <tasktune-database> -E -b -i "tasktune-backend/Script Database/Migrations/20261117_002_account_security.sql"
+sqlcmd -S <sql-server> -d <tasktune-database> -E -b -i "tasktune-backend/Script Database/Migrations/20261117_003_communication_approval_outbox.sql"
+~~~
+
+Use the authentication mode and connection options approved for your environment. The account-security migration adds session/token tables. The communication migration adds approval and outbox tables and is safe to re-run. CI validates the communication migration twice against a fresh SQL Server scratch database. Do not enable outbound communication until the migration has been applied and SMTP secrets have been configured.
+
+The communication flow is: HR/admin submits a request; a different CEO/Admin approves or rejects; approval queues recipient-specific outbox rows; the background worker validates the active same-company recipients and sends through TLS SMTP. Failed deliveries and expired processing leases are not retried automatically because the provider may already have accepted a message; verify provider logs before any manual resend.

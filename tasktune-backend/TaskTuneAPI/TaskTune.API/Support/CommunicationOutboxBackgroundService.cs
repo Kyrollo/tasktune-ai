@@ -149,17 +149,28 @@ public sealed class CommunicationOutboxBackgroundService(
                 ccRecipients,
                 cancellationToken);
 
-            await db.CommunicationOutbox.IgnoreQueryFilters()
+            var sentAt = DateTime.UtcNow;
+            var markedSent = await db.CommunicationOutbox.IgnoreQueryFilters()
                 .Where(item => item.OutboxId == outbox.OutboxId &&
                                item.Status == "Processing" &&
                                item.LockId == lockId)
                 .ExecuteUpdateAsync(update => update
                     .SetProperty(item => item.Status, "Sent")
-                    .SetProperty(item => item.SentAt, (DateTime?)DateTime.UtcNow)
+                    .SetProperty(item => item.SentAt, (DateTime?)sentAt)
                     .SetProperty(item => item.LockedUntil, (DateTime?)null)
                     .SetProperty(item => item.LockId, (Guid?)null)
                     .SetProperty(item => item.LastError, (string?)null),
                     cancellationToken);
+
+            if (markedSent == 1)
+            {
+                await db.CommunicationLogs.IgnoreQueryFilters()
+                    .Where(log => log.CommunicationId == outbox.CommunicationId &&
+                                  log.CompanyId == outbox.CompanyId)
+                    .ExecuteUpdateAsync(update => update
+                        .SetProperty(log => log.SentAt, sentAt),
+                        cancellationToken);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

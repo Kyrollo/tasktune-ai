@@ -158,7 +158,7 @@ public class CommunicationsController : BaseApiController
             {
                 name = agentConfig.Name,
                 enabled = aiConfig.Enabled && aiConfig.Features.EmailAssistant && agentConfig.Enabled,
-                senderEmail = Environment.GetEnvironmentVariable("GMAIL_USER"),
+                senderEmail = _configuration["Email:Smtp:From"],
                 mode = "smtp",
                 provider = agentConfig.Provider,
                 model = agentConfig.Model,
@@ -398,6 +398,29 @@ public class CommunicationsController : BaseApiController
             request.Body.Trim().Length > 20000)
             return BadRequest(new { message = "Subject (1–200 characters) and body (1–20000 characters) are required." });
 
+        var callerProvidedIdempotencyKey = request.IdempotencyKey.HasValue &&
+                                           request.IdempotencyKey.Value != Guid.Empty;
+        var idempotencyKey = callerProvidedIdempotencyKey
+            ? request.IdempotencyKey!.Value
+            : Guid.NewGuid();
+
+        var existingApproval = await _db.CommunicationApprovals
+            .Include(approval => approval.OutboxItems)
+            .FirstOrDefaultAsync(approval =>
+                approval.CompanyId == companyId.Value &&
+                approval.IdempotencyKey == idempotencyKey, cancellationToken);
+        if (existingApproval != null)
+        {
+            return Accepted(new
+            {
+                approvalId = existingApproval.ApprovalId,
+                batchId = existingApproval.BatchId,
+                status = existingApproval.Status,
+                recipientCount = existingApproval.OutboxItems.Count,
+                message = "This submission was already received; the existing approval request is being returned."
+            });
+        }
+
         var recipientType = request.RecipientType?.Trim() ?? "Individual";
         if (!new[] { "Individual", "Multiple Employees", "Department", "Company" }
                 .Contains(recipientType, StringComparer.OrdinalIgnoreCase))
@@ -490,9 +513,13 @@ public class CommunicationsController : BaseApiController
             ? await _db.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
+        try
+        {
+
         var approval = new CommunicationApproval
         {
             BatchId = batchId,
+            IdempotencyKey = idempotencyKey,
             CompanyId = companyId.Value,
             RequestedByUserId = userId.Value,
             Status = "PendingApproval",
@@ -568,6 +595,31 @@ public class CommunicationsController : BaseApiController
             recipientCount = outboxItems.Count,
             message = "Your communication was submitted for approval. No email will be sent until a different CEO or Admin approves it."
         });
+        }
+        catch (DbUpdateException) when (callerProvidedIdempotencyKey)
+        {
+            if (transaction != null)
+                await transaction.RollbackAsync(cancellationToken);
+            _db.ChangeTracker.Clear();
+
+            var concurrentRequest = await _db.CommunicationApprovals.IgnoreQueryFilters()
+                .Include(existing => existing.OutboxItems)
+                .FirstOrDefaultAsync(existing =>
+                    existing.CompanyId == companyId.Value &&
+                    existing.IdempotencyKey == idempotencyKey,
+                    cancellationToken);
+            if (concurrentRequest == null)
+                throw;
+
+            return Accepted(new
+            {
+                approvalId = concurrentRequest.ApprovalId,
+                batchId = concurrentRequest.BatchId,
+                status = concurrentRequest.Status,
+                recipientCount = concurrentRequest.OutboxItems.Count,
+                message = "This submission was already received; the existing approval request is being returned."
+            });
+        }
     }
 
     private async Task<User?> ResolveRecipientUser(int companyId, CreateCommunicationRequest request)
@@ -697,6 +749,7 @@ public class CreateCommunicationRequest
     public bool RecommendationUsed { get; set; }
     public string Subject { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+    public Guid? IdempotencyKey { get; set; }
 }
 
 public class CommunicationRecommendationRequest

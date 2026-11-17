@@ -752,6 +752,7 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.ReviewNote).HasMaxLength(1000);
             entity.Property(e => e.RowVersion).IsRowVersion();
             entity.HasIndex(e => e.BatchId).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.IdempotencyKey }).IsUnique();
             entity.HasIndex(e => new { e.CompanyId, e.Status, e.RequestedAt });
             entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);

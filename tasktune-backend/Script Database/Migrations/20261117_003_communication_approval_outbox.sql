@@ -8,6 +8,7 @@ BEGIN
     (
         ApprovalId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CommunicationApprovals PRIMARY KEY,
         BatchId UNIQUEIDENTIFIER NOT NULL,
+        IdempotencyKey UNIQUEIDENTIFIER NOT NULL,
         CompanyId INT NOT NULL,
         RequestedByUserId INT NOT NULL,
         Status NVARCHAR(32) NOT NULL CONSTRAINT DF_CommunicationApprovals_Status DEFAULT N'PendingApproval',
@@ -26,9 +27,29 @@ BEGIN
             (Status IN (N'PendingApproval', N'Approved', N'Rejected'))
     );
     CREATE UNIQUE INDEX UX_CommunicationApprovals_BatchId ON dbo.CommunicationApprovals(BatchId);
+    CREATE UNIQUE INDEX UX_CommunicationApprovals_Company_IdempotencyKey ON dbo.CommunicationApprovals(CompanyId, IdempotencyKey);
     CREATE INDEX IX_CommunicationApprovals_Company_Status_RequestedAt
         ON dbo.CommunicationApprovals(CompanyId, Status, RequestedAt);
 END
+GO
+
+-- Backfill the request-level idempotency key when upgrading an earlier phase-7 draft.
+IF COL_LENGTH(N'dbo.CommunicationApprovals', N'IdempotencyKey') IS NULL
+BEGIN
+    ALTER TABLE dbo.CommunicationApprovals ADD IdempotencyKey UNIQUEIDENTIFIER NULL;
+    UPDATE dbo.CommunicationApprovals SET IdempotencyKey = NEWID() WHERE IdempotencyKey IS NULL;
+    ALTER TABLE dbo.CommunicationApprovals ALTER COLUMN IdempotencyKey UNIQUEIDENTIFIER NOT NULL;
+END
+GO
+
+IF NOT EXISTS
+(
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.CommunicationApprovals')
+      AND name = N'UX_CommunicationApprovals_Company_IdempotencyKey'
+)
+    CREATE UNIQUE INDEX UX_CommunicationApprovals_Company_IdempotencyKey
+        ON dbo.CommunicationApprovals(CompanyId, IdempotencyKey);
 GO
 
 IF OBJECT_ID(N'dbo.CommunicationOutbox', N'U') IS NULL

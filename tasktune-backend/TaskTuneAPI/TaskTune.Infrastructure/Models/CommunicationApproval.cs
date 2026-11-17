@@ -4,6 +4,7 @@ public class CommunicationApproval
 {
     public int ApprovalId { get; set; }
     public Guid BatchId { get; set; }
+    public Guid IdempotencyKey { get; set; }
     public int CompanyId { get; set; }
     public int RequestedByUserId { get; set; }
     public string Status { get; set; } = "PendingApproval";

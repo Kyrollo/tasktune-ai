@@ -99,6 +99,7 @@ public sealed class CommunicationApprovalWorkflowTests
         var approval = new CommunicationApproval
         {
             BatchId = Guid.NewGuid(),
+            IdempotencyKey = Guid.NewGuid(),
             CompanyId = company.CompanyId,
             Company = company,
             RequestedByUserId = requester.UserId,
