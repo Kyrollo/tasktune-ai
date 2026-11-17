@@ -9,13 +9,18 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[RequireModule("basic_reports")]
+[RequireModule("reports")]
 [Authorize]
 public class ReportsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly TenantEntitlementService _entitlements;
 
-    public ReportsController(TaskTuneDbContext db) => _db = db;
+    public ReportsController(TaskTuneDbContext db, TenantEntitlementService entitlements)
+    {
+        _db = db;
+        _entitlements = entitlements;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetReports(
@@ -258,6 +263,7 @@ public class ReportsController : BaseApiController
     }
 
     [HttpPost("ai-generate")]
+    [RequireModule("ai_assistant")]
     [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
     public async Task<IActionResult> GenerateAIReport([FromBody] AIGenerateReportRequest request)
     {
@@ -273,6 +279,27 @@ public class ReportsController : BaseApiController
         {
             return StatusCode(503, new { message = "Report generation is disabled in AI Control Panel." });
         }
+
+        var idempotencyKey = Request.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            idempotencyKey = $"ai:report:{Guid.NewGuid():N}";
+        else
+            idempotencyKey = $"ai:report:{idempotencyKey}";
+        if (idempotencyKey.Length > 160)
+            return BadRequest(new { message = "Idempotency-Key must not exceed 144 characters." });
+
+        try
+        {
+            await _entitlements.ConsumeAiRequestAsync(
+                companyId.Value,
+                idempotencyKey,
+                "AIReport");
+        }
+        catch (TenantEntitlementException ex)
+        {
+            return StatusCode(ex.StatusCode, new { message = ex.Message, traceId = HttpContext.TraceIdentifier });
+        }
+
         var startDate = ParseDateOnly(request.StartDate) ?? DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-1));
         var endDate = ParseDateOnly(request.EndDate) ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var selectedDepartment = string.IsNullOrWhiteSpace(request.Department) ? "All Departments" : request.Department.Trim();
