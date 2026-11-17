@@ -529,11 +529,11 @@ public sealed class AttendanceController : BaseApiController
         if (actorId == null || companyId == null) return Unauthorized();
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var from = request?.From ?? today.AddDays(-30);
-        var to = request?.To ?? today;
-        if (to < from)
+        var startDate = request?.From ?? today.AddDays(-30);
+        var endDate = request?.To ?? today;
+        if (endDate < startDate)
             return BadRequest(new { message = "The end date cannot be earlier than the start date." });
-        if (to.DayNumber - from.DayNumber > 30)
+        if (endDate.DayNumber - startDate.DayNumber > 30)
             return BadRequest(new { message = "Missed-attendance reconciliation is limited to 31 calendar days per request." });
 
         var now = DateTime.UtcNow;
@@ -543,8 +543,8 @@ public sealed class AttendanceController : BaseApiController
             from record in _db.AttendanceRecords
             join shift in _db.WorkShifts on record.WorkShiftId equals shift.WorkShiftId
             where record.CompanyId == companyId.Value &&
-                  record.WorkDate >= from &&
-                  record.WorkDate <= to &&
+                  record.WorkDate >= startDate &&
+                  record.WorkDate <= endDate &&
                   shift.CompanyId == companyId.Value &&
                   record.Status == "scheduled" &&
                   record.CheckInUtc == null &&
@@ -565,7 +565,7 @@ public sealed class AttendanceController : BaseApiController
         if (missed.Count == 0)
         {
             await transaction.CommitAsync();
-            return Ok(new { From = from, To = to, ReconciledMissed = 0 });
+            return Ok(new { From = startDate, To = endDate, ReconciledMissed = 0 });
         }
 
         await _db.SaveChangesAsync();
@@ -576,7 +576,7 @@ public sealed class AttendanceController : BaseApiController
         }
         await transaction.CommitAsync();
 
-        return Ok(new { From = from, To = to, ReconciledMissed = missed.Count });
+        return Ok(new { From = startDate, To = endDate, ReconciledMissed = missed.Count });
     }
 
     [HttpPost("records/{attendanceRecordId:int}/adjust")]
