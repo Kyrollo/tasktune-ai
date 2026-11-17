@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Mail;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -19,12 +18,15 @@ public class CommunicationsController : BaseApiController
     public CommunicationsController(TaskTuneDbContext db) => _db = db;
 
     [HttpGet]
+    [Authorize(Roles = "HR,CEO,Admin")]
     public async Task<IActionResult> GetCommunications(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (companyId == null) return Unauthorized();
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
         var query = _db.CommunicationLogs
             .Include(c => c.SentByNavigation)
@@ -76,7 +78,7 @@ public class CommunicationsController : BaseApiController
                 c.Subject,
                 message = c.Body,
                 body = c.Body,
-                status = "Sent",
+                status = "Recorded",
                 sentAt = c.SentAt,
                 date = c.SentAt
             }),
@@ -251,11 +253,38 @@ public class CommunicationsController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (userId == null) return Unauthorized();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
-        if (string.IsNullOrWhiteSpace(request.Subject) || string.IsNullOrWhiteSpace(request.Body))
-            return BadRequest(new { message = "Subject and body are required." });
+        if (request == null || string.IsNullOrWhiteSpace(request.Subject) ||
+            request.Subject.Length > 200 || string.IsNullOrWhiteSpace(request.Body) || request.Body.Length > 20000)
+            return BadRequest(new { message = "Subject (1–200 characters) and body (1–20000 characters) are required." });
 
         var recipientType = request.RecipientType?.Trim() ?? "Individual";
+        if (!new[] { "Individual", "Multiple Employees", "Department", "Company" }
+                .Contains(recipientType, StringComparer.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Invalid recipient type." });
+
         var communicationType = request.CommunicationType ?? MapCommunicationType(request.Type);
+        if (communicationType is < 1 or > 3)
+            return BadRequest(new { message = "Invalid communication type." });
+
+        var ccEmails = (request.CcEmails ?? [])
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Select(email => email.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (ccEmails.Count > 25 || ccEmails.Any(email =>
+            !MailAddress.TryCreate(email, out var address) ||
+            !string.Equals(address.Address, email, StringComparison.OrdinalIgnoreCase)))
+            return BadRequest(new { message = "CC addresses must be valid and cannot exceed 25 recipients." });
+
+        if (ccEmails.Count > 0)
+        {
+            var companyCcEmails = await _db.Users
+                .Where(u => u.CompanyId == companyId.Value && u.IsActive && u.Email != null && ccEmails.Contains(u.Email))
+                .Select(u => u.Email!)
+                .ToListAsync();
+            if (companyCcEmails.Distinct(StringComparer.OrdinalIgnoreCase).Count() != ccEmails.Count)
+                return BadRequest(new { message = "CC recipients must be active users in your company." });
+        }
 
         List<User> recipientUsers = [];
         Department? recipientDepartment = null;
@@ -355,7 +384,7 @@ public class CommunicationsController : BaseApiController
             primaryLog.CommunicationId,
             id = primaryLog.CommunicationId,
             type = GetCommunicationTypeName(primaryLog.CommunicationType),
-            status = emailResult.success ? "Sent" : "Saved",
+            status = emailResult.success ? "Sent" : "PendingApproval",
             recipientType,
             recipient = recipientUsers.Count > 0
                 ? string.Join(", ", recipientUsers.Select(u => u.FullName ?? (u.FirstName + " " + u.LastName)))
@@ -449,49 +478,18 @@ public class CommunicationsController : BaseApiController
             .ToListAsync();
     }
 
-    private static async Task<(bool success, string? error)> TrySendEmailsAsync(IEnumerable<string> recipients, IEnumerable<string>? ccEmails, string subject, string body)
+    private static Task<(bool success, string? error)> TrySendEmailsAsync(
+        IEnumerable<string> recipients,
+        IEnumerable<string>? ccEmails,
+        string subject,
+        string body)
     {
-        var senderEmail = Environment.GetEnvironmentVariable("GMAIL_USER");
-        var senderPassword = Environment.GetEnvironmentVariable("GMAIL_APP_PASSWORD");
-        var uniqueRecipients = recipients.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var uniqueCc = (ccEmails ?? [])
-            .Where(r => !string.IsNullOrWhiteSpace(r))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (!uniqueRecipients.Any())
-            return (false, "No recipient email addresses were available.");
-
-        if (string.IsNullOrWhiteSpace(senderEmail) || string.IsNullOrWhiteSpace(senderPassword))
-            return (false, "GMAIL_USER or GMAIL_APP_PASSWORD is not configured.");
-
-        try
-        {
-            using var client = new SmtpClient("smtp.gmail.com", 587)
-            {
-                Credentials = new NetworkCredential(senderEmail, senderPassword),
-                EnableSsl = true
-            };
-
-            foreach (var recipient in uniqueRecipients)
-            {
-                using var message = new MailMessage(senderEmail, recipient.Trim(), subject, body);
-                foreach (var cc in uniqueCc)
-                {
-                    if (!string.Equals(cc, recipient, StringComparison.OrdinalIgnoreCase))
-                    {
-                        message.CC.Add(cc);
-                    }
-                }
-                await client.SendMailAsync(message);
-            }
-
-            return (true, null);
-        }
-        catch (Exception ex)
-        {
-            return (false, ex.Message);
-        }
+        // Direct SMTP sending is intentionally disabled until communication approval,
+        // delivery idempotency and an auditable recipient allowlist are implemented.
+        // The request is recorded for review; this endpoint does not send external mail.
+        return Task.FromResult<(bool success, string? error)>((
+            false,
+            "Pending approval: direct outbound email is disabled until the approval workflow is available."));
     }
 
     private static byte MapCommunicationType(string? type) => type?.Trim().ToLowerInvariant() switch

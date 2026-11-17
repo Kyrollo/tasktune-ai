@@ -15,6 +15,7 @@ public class RolePermissionsController : BaseApiController
     public RolePermissionsController(TaskTuneDbContext db) => _db = db;
 
     [HttpGet]
+    [Authorize(Roles = "CEO,Admin")]
     public async Task<IActionResult> GetPermissions()
     {
         var companyId = GetCurrentCompanyId();
@@ -45,7 +46,20 @@ public class RolePermissionsController : BaseApiController
     public async Task<IActionResult> UpdatePermissions([FromBody] UpdateRolePermissionsRequest request)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (companyId == null) return Unauthorized();
+        if (request?.Permissions == null || request.Permissions.Count == 0 || request.Permissions.Count > 500)
+            return BadRequest(new { message = "Between 1 and 500 permission updates are required." });
+
+        var allowedActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "access", "read", "create", "update", "delete", "export", "approve" };
+        var uniquePermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in request.Permissions)
+        {
+            if (item.Role > 5 || string.IsNullOrWhiteSpace(item.Resource) || item.Resource.Length > 80 ||
+                string.IsNullOrWhiteSpace(item.Action) || !allowedActions.Contains(item.Action) ||
+                !uniquePermissions.Add($"{item.Role}:{item.Resource.Trim()}:{item.Action.Trim()}"))
+                return BadRequest(new { message = "Permission roles, resources, actions or duplicate entries are invalid." });
+        }
 
         foreach (var item in request.Permissions)
         {
