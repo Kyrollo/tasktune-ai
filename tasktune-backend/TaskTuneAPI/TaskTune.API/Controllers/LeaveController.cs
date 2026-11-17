@@ -264,12 +264,24 @@ public sealed class LeaveController : BaseApiController
         if (leaveType.RequiresAttachment)
             return BadRequest(new { message = "This leave type requires supporting evidence. Evidence upload must be enabled for this company before requests can be submitted." });
 
-        var holidays = await _db.CompanyHolidays.AsNoTracking()
+        var holidayRecords = await _db.CompanyHolidays.AsNoTracking()
             .Where(x => x.CompanyId == companyId.Value && x.IsActive &&
-                        x.HolidayDate >= request.StartDate && x.HolidayDate <= request.EndDate)
-            .Select(x => x.HolidayDate)
+                        ((x.HolidayDate >= request.StartDate && x.HolidayDate <= request.EndDate) || x.IsRecurring))
+            .Select(x => new { x.HolidayDate, x.IsRecurring })
             .ToListAsync();
-        var daysByYear = LeaveCalendarCalculator.CountWorkingDaysByYear(request.StartDate, request.EndDate, holidays);
+
+        var holidays = new HashSet<DateOnly>();
+        for (var day = request.StartDate; day <= request.EndDate; day = day.AddDays(1))
+        {
+            if (holidayRecords.Any(h => h.HolidayDate == day ||
+                                        (h.IsRecurring && h.HolidayDate.Month == day.Month && h.HolidayDate.Day == day.Day)))
+                holidays.Add(day);
+        }
+
+        var calendarSettings = await WorkCalendarSettingsStore.LoadAsync(_db, companyId.Value);
+        var weekendDays = calendarSettings.WeekendDays.Select(day => (DayOfWeek)day).ToArray();
+        var daysByYear = LeaveCalendarCalculator.CountWorkingDaysByYear(
+            request.StartDate, request.EndDate, holidays, weekendDays);
         var totalDays = daysByYear.Values.Sum();
         if (totalDays <= 0)
             return BadRequest(new { message = "The selected date range contains no working days." });
@@ -529,18 +541,90 @@ public sealed class LeaveController : BaseApiController
         return Ok(new { leaveRequest.LeaveRequestId, leaveRequest.Status });
     }
 
+    [HttpGet("calendar-settings")]
+    public async Task<IActionResult> GetCalendarSettings()
+    {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+        var settings = await WorkCalendarSettingsStore.LoadAsync(_db, companyId.Value);
+        return Ok(new
+        {
+            weekendDays = settings.WeekendDays,
+            dayNames = settings.WeekendDays.Select(day => ((DayOfWeek)day).ToString()).ToList()
+        });
+    }
+
+    [HttpPut("calendar-settings")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> UpdateCalendarSettings([FromBody] UpdateWorkCalendarRequest request)
+    {
+        var companyId = GetCurrentCompanyId();
+        var actorId = GetCurrentUserId();
+        if (companyId == null || actorId == null) return Unauthorized();
+
+        try
+        {
+            var before = await WorkCalendarSettingsStore.LoadAsync(_db, companyId.Value);
+            var saved = await WorkCalendarSettingsStore.SaveAsync(_db, companyId.Value, request.WeekendDays);
+            await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, "UPDATE", "CompanyWorkCalendar", companyId.Value,
+                before: new { before.WeekendDays },
+                after: new { saved.WeekendDays });
+
+            return Ok(new { weekendDays = saved.WeekendDays });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("holidays")]
     public async Task<IActionResult> GetHolidays([FromQuery] int? year)
     {
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return Unauthorized();
         var selectedYear = year ?? DateTime.UtcNow.Year;
-        var items = await _db.CompanyHolidays.AsNoTracking()
+        if (selectedYear is < 2000 or > 2200)
+            return BadRequest(new { message = "Year must be between 2000 and 2200." });
+
+        var records = await _db.CompanyHolidays.AsNoTracking()
             .Where(x => x.CompanyId == companyId.Value && x.IsActive &&
-                        x.HolidayDate.Year == selectedYear)
+                        (x.HolidayDate.Year == selectedYear || x.IsRecurring))
             .OrderBy(x => x.HolidayDate)
-            .Select(x => new { x.CompanyHolidayId, x.Name, x.HolidayDate, x.IsRecurring })
             .ToListAsync();
+
+        var items = records.Select(record =>
+        {
+            DateOnly displayDate;
+            try
+            {
+                displayDate = record.IsRecurring
+                    ? new DateOnly(selectedYear, record.HolidayDate.Month, record.HolidayDate.Day)
+                    : record.HolidayDate;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null; // e.g. a recurring February 29 holiday in a non-leap year.
+            }
+
+            return new
+            {
+                record.CompanyHolidayId,
+                record.Name,
+                HolidayDate = displayDate,
+                record.IsRecurring
+            };
+        })
+        .Where(item => item != null)
+        .GroupBy(item => item!.HolidayDate)
+        .Select(group => group.First()!)
+        .OrderBy(item => item.HolidayDate)
+        .ToList();
+
         return Ok(new { items });
     }
 
@@ -555,7 +639,13 @@ public sealed class LeaveController : BaseApiController
             return BadRequest(new { message = "Holiday name is required and must not exceed 160 characters." });
 
         var existing = await _db.CompanyHolidays.AnyAsync(x =>
-            x.CompanyId == companyId.Value && x.HolidayDate == request.HolidayDate && x.IsActive);
+            x.CompanyId == companyId.Value && x.IsActive &&
+            (x.HolidayDate == request.HolidayDate ||
+             (x.IsRecurring && x.HolidayDate.Month == request.HolidayDate.Month &&
+              x.HolidayDate.Day == request.HolidayDate.Day) ||
+             (request.IsRecurring && x.HolidayDate.Month == request.HolidayDate.Month &&
+              x.HolidayDate.Day == request.HolidayDate.Day)));
+
         if (existing)
             return Conflict(new { message = "A holiday is already configured for this date." });
 
@@ -658,3 +748,4 @@ public sealed record CreateLeaveRequest(int LeaveTypeId, DateOnly StartDate, Dat
 public sealed record LeaveDecisionRequest(bool Approve, string? Comment);
 public sealed record CancelLeaveRequest(string? Reason);
 public sealed record CreateCompanyHolidayRequest(string Name, DateOnly HolidayDate, bool IsRecurring);
+public sealed record UpdateWorkCalendarRequest(List<int> WeekendDays);
