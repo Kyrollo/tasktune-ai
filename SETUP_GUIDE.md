@@ -130,3 +130,18 @@ python -m compileall -q tasktune-agents
 ## 6. Credential hygiene
 
 The tracked appsettings files no longer contain database credentials or a JWT signing key. If credentials were previously committed, removing them from the current tree does not remove them from Git history. Rotate the database credential and JWT signing key before using any shared environment. Never commit real connection strings, signing keys, API keys, or customer data.
+
+
+Configure an HTTPS frontend base URL and transactional SMTP provider for secure invitation and password-reset emails. SMTP credentials must be stored in User Secrets or deployment secrets, not in appsettings or Git:
+
+~~~powershell
+dotnet user-secrets set "Web:BaseUrl" "https://app.example.com"
+dotnet user-secrets set "Email:Smtp:Host" "smtp.example.com"
+dotnet user-secrets set "Email:Smtp:Port" "587"
+dotnet user-secrets set "Email:Smtp:From" "no-reply@example.com"
+dotnet user-secrets set "Email:Smtp:Username" "smtp-user"
+dotnet user-secrets set "Email:Smtp:Password" "smtp-password"
+dotnet user-secrets set "Email:Smtp:EnableSsl" "true"
+~~~
+
+For local development, use an HTTPS localhost origin or a local SMTP test sink. The app now rate-limits login, refresh, registration, password-reset, and reset-token endpoints per client IP. Company creation remains disabled; new users can only register using a valid one-time company invitation.

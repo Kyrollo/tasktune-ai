@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.DTOs.Users;
 using TaskTune.API.Support;
@@ -13,7 +14,13 @@ namespace TaskTune.API.Controllers;
 public class UsersController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
-    public UsersController(TaskTuneDbContext db) => _db = db;
+    private readonly AccountSecurityWorkflowService _accountWorkflow;
+
+    public UsersController(TaskTuneDbContext db, AccountSecurityWorkflowService accountWorkflow)
+    {
+        _db = db;
+        _accountWorkflow = accountWorkflow;
+    }
 
     [HttpGet]
     [Authorize(Roles = "Admin,CEO,HR")]
@@ -150,10 +157,58 @@ public class UsersController : BaseApiController
         user.RefreshToken = null;
         user.RefreshTokenExpiry = null;
         user.UpdatedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        var activeSessions = await _db.UserSessions
+            .Where(s => s.UserId == user.UserId && s.RevokedAt == null)
+            .ToListAsync();
+        foreach (var session in activeSessions)
+            session.RevokedAt = now;
+
+        var outstandingTokens = await _db.AccountSecurityTokens
+            .Where(t => t.UserId == user.UserId && t.ConsumedAt == null)
+            .ToListAsync();
+        foreach (var token in outstandingTokens)
+            token.ConsumedAt = now;
+
         await _db.SaveChangesAsync();
         await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, action: "DEACTIVATE",
             resourceType: "User", resourceId: user.UserId, before: before, after: new { user.IsActive });
         return NoContent();
+    }
+
+
+    [HttpPost("invitations")]
+    [EnableRateLimiting("auth")]
+    [Authorize(Roles = "Admin,CEO,HR")]
+    public async Task<IActionResult> CreateInvitation(
+        [FromBody] CreateInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actorId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (actorId == null || companyId == null) return Unauthorized();
+
+        var actorRole = GetCurrentRole();
+        if (string.Equals(actorRole, "HR", StringComparison.OrdinalIgnoreCase) && request.Role > 2)
+            return Forbid();
+        if (!string.Equals(actorRole, "Admin", StringComparison.OrdinalIgnoreCase) &&
+            request.Role == 5)
+            return Forbid();
+
+        var result = await _accountWorkflow.CreateInvitationAsync(
+            companyId.Value,
+            actorId.Value,
+            request.Email,
+            request.Role,
+            request.DepartmentId,
+            request.PositionId,
+            cancellationToken);
+
+        if (!result.Success) return BadRequest(new { message = result.Error });
+        await AuditLogWriter.WriteAsync(_db, HttpContext, actorId,
+            action: "INVITE", resourceType: "AccountInvitation",
+            after: new { email = request.Email.Trim(), role = request.Role, request.DepartmentId, request.PositionId });
+        return Accepted(new { message = "Invitation email sent. The link is valid for 48 hours and can only be used once." });
     }
 
     private async Task<bool> ReferencesBelongToTenantAsync(int companyId, int? departmentId, int? positionId)
@@ -171,3 +226,5 @@ public class UsersController : BaseApiController
         return true;
     }
 }
+
+public record CreateInvitationRequest(string Email, byte Role, int? DepartmentId, int? PositionId);

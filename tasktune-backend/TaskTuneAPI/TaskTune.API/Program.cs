@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -6,11 +7,13 @@ using Serilog;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using TaskTune.API.Middleware;
 using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
 using TaskTune.Infrastructure.Services;
 using TaskTune.API.Tenancy;
+using TaskTune.API.Support;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,6 +78,23 @@ builder.Services.AddDbContext<TaskTuneDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ITransactionalEmailSender, SmtpTransactionalEmailSender>();
+builder.Services.AddScoped<AccountSecurityWorkflowService>();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 8,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 builder.Services.AddScoped<ITaskService, TaskService>();
 
 builder.Services.AddAuthentication(options =>
@@ -173,6 +193,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseRouting();
+app.UseRateLimiter();
 app.UseCors("ReactFrontend");
 app.UseAuthentication();
 app.UseMiddleware<TenantMembershipMiddleware>();

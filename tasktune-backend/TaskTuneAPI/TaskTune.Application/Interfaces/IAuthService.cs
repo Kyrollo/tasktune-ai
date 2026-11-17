@@ -4,7 +4,7 @@ namespace TaskTune.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<TokenResponseDto?> LoginAsync(LoginRequestDto request);
-    Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken);
-    Task<bool> LogoutAsync(int userId);
+    Task<TokenResponseDto?> LoginAsync(LoginRequestDto request, string? userAgent = null, string? ipAddress = null);
+    Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken, string? userAgent = null, string? ipAddress = null);
+    Task<bool> LogoutAsync(int userId, Guid? sessionId);
 }

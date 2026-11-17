@@ -41,6 +41,20 @@ This record tracks implementation against the product and engineering plan. It s
 - Disabled direct SMTP delivery from the communications endpoint until recipient approval, an auditable allowlist and idempotent delivery tracking exist. The endpoint records the communication history and responds with PendingApproval, but a persistent approval state/workflow is not yet implemented. CC entries are validated against active users in the same tenant.
 - Restricted raw test/debug data endpoints to Development environment only.
 
+
+## Completed — phase 6: invitations, password recovery, and revocable sessions
+
+- Added SQL Server tables and the idempotent migration script `tasktune-backend/Script Database/Migrations/20261117_002_account_security.sql` for `UserSessions` and `AccountSecurityTokens`, including row-version concurrency control and tenant query filters.
+- Replaced single-refresh-token storage with per-device session families. Refresh tokens are stored only as SHA-256 digests; rotation consumes the previous token and records its replacement.
+- A consumed refresh token replay revokes its whole session family. Access tokens include a session ID and middleware rejects revoked, expired, consumed, missing, or foreign-user sessions on each authenticated request.
+- Added per-session logout, device/session listing, and individual device-family revocation. Password reset and account deactivation revoke every active session.
+- Added one-time, email-bound, 48-hour company invitations. The token is random, only its hash is stored, account creation takes company/role/department/position from the invitation record, and the invitee must open the email link to verify the address.
+- Disabled public company self-provisioning. The admin Users page now sends an invitation rather than creating a password for another person; the invitee selects their own password.
+- Added 30-minute single-use password-reset tokens, hashed at rest, generic account-existence responses, 12-character minimum passwords, BCrypt password storage, and rate limiting for login, refresh, registration, password-reset, and reset-token endpoints.
+- Added TLS-required SMTP delivery configuration and HTTPS frontend-link configuration. Invitation and reset email delivery failures are handled without disclosing account existence.
+- Updated Settings with current-session visibility and the ability to revoke other device sessions.
+- Added integration-style regression tests covering invitation email binding/single use, password-reset single use, password hashing, session-family rotation/replay revocation, per-family logout, and password-reset session revocation.
+
 ## Verification evidence
 
 - Phase 1 GitHub Actions run on `0874d70c332b0e4220bca36f2a099ba9a9d42785`: all three workflow jobs passed.
@@ -50,6 +64,8 @@ This record tracks implementation against the product and engineering plan. It s
 - Removed tracked local `.dotnet` and Vite cache artifacts and added ignore rules.
 - Phase 4 agent-boundary run [#44132448022](https://github.com/Kyrollo/tasktune-ai/actions/runs/44132448022): all three CI jobs passed.
 - Phase 5 encrypted-provider-secrets run [#44136064215](https://github.com/Kyrollo/tasktune-ai/actions/runs/44136064215): API build, all 6 backend tests (including encrypted secret handling and SQL Server query-filter translation), frontend lint/build, and Python tests passed.
+- Phase 6 account-security run [#44160588342](https://github.com/Kyrollo/tasktune-ai/actions/runs/44160588342): build and all 9 backend tests passed, including SQL Server integration tests, session replay/logout, invitation single-use, and password-reset revocation.
+- Final phase 6 UI/branch run [#44161645592](https://github.com/Kyrollo/tasktune-ai/actions/runs/44161645592): backend, frontend lint/production build, and Python agent validation all passed.
 - Local .NET execution was not available in the implementation environment; GitHub Actions is the build/test evidence.
 - Frontend install reported 19 dependency advisories (1 low, 4 moderate, 14 high). No blind `npm audit fix` was applied; affected packages still need targeted triage and upgrades.
 
@@ -58,14 +74,14 @@ This record tracks implementation against the product and engineering plan. It s
 1. Complete a full endpoint, SQL query, export, background-job and agent-tool authorization matrix. Phase 2 covered core people/work resources but should not be treated as proof that every route and downstream data path is fully scoped.
 2. Expand SQL Server integration coverage to relationship-owned filters, foreign-key constraints, transactions and concurrency; add reviewed, versioned schema migrations and rehearse both forward and rollback paths.
 3. Migrate legacy attachment rows/files from any previous public `wwwroot/uploads` location into private storage, verify metadata/path integrity, and confirm no public static copies remain.
-4. Implement tenant-scoped invitations, email verification and secure tenant provisioning before re-enabling registration.
-5. Implement password reset with expiring, single-use, hashed tokens and rate limiting.
-6. Add refresh-token session-family tracking and reuse detection, device/session revocation and account recovery hardening.
-7. Complete the communication approval workflow, authorized-recipient policy, delivery outbox/idempotency and provider credential isolation before re-enabling outbound SMTP.
+4. Configure production SMTP and HTTPS frontend origins, apply the account-security migration, and run end-to-end invitation delivery/verification in a deployment environment before re-enabling invitation flows for customers. Self-service company creation remains intentionally disabled.
+5. Password reset and recovery are implemented with expiring, single-use, hashed tokens and rate limiting; validate end-to-end delivery with the production SMTP provider.
+6. Refresh-token session-family tracking, replay detection, per-device revocation, and access-token session checks are implemented and covered by regression tests.
+7. Complete the persistent communication approval workflow, authorized-recipient policy, delivery outbox/idempotency and approval UI before enabling external communications.
 8. Continue the full `IgnoreQueryFilters()`/raw-SQL audit and authorize every remaining downstream agent/tool path. Core API-to-agent requests now use a private service key and TLS for remote destinations; move provider keys to a dedicated managed secret vault and service-side references for larger multi-instance production deployments.
 9. Configure production `Cors:AllowedOrigins`, `AgentServices:ServiceApiKey`, and `AISecrets:EncryptionKey` in the deployment secret manager; rotate all existing provider keys and protect/backup the encryption key. The API and agents now reject missing service authentication and arbitrary non-TLS remote agent URLs.
 10. Triage the 19 npm dependency advisories (1 low, 4 moderate, 14 high), complete full dependency/license ownership review, secret rotation (previously committed secrets remain in Git history), telemetry, backups/restore drills, and independent security review.
 
 ## Release posture
 
-This phase improves important security boundaries and has passing CI evidence on the working branch. It does **not** establish production readiness. Do not load customer production data until the remaining isolation, SQL Server integration, invitations/recovery, email approval, dependency, backup/restore, operations and independent security gates have passed.
+This repository has passing CI evidence for the implemented phases, but CI does **not** establish production readiness. The account-security SQL migration must be applied and verified on a backed-up deployment database; production SMTP, stable encryption keys, legacy file migration, communication approval, dependency remediation, backup/restore, telemetry, and independent security review remain release gates.

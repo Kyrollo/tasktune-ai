@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import {
   Zap, Eye, EyeOff, Building2, UserPlus,
@@ -11,14 +11,16 @@ const STEPS_OWNER    = ['type', 'company', 'org', 'account'];
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const [accountType, setAccountType] = useState(null);
+  const [searchParams] = useSearchParams();
+  const invitationFromUrl = searchParams.get('invite') || '';
+  const [accountType, setAccountType] = useState(invitationFromUrl ? 'employee' : null);
   const [submitting, setSubmitting]   = useState(false);
   const [apiError, setApiError]       = useState(null);
-  const [step, setStep]               = useState('type');
+  const [step, setStep]               = useState(invitationFromUrl ? 'details' : 'type');
   const [showPw, setShowPw]           = useState(false);
 
   // Employee fields
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(invitationFromUrl);
   const [empForm, setEmpForm]       = useState({ name: '', email: '', password: '', confirmPassword: '' });
 
   // Owner fields
@@ -46,28 +48,33 @@ export default function SignUp() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setApiError(null);
+    if (accountType !== 'employee' || !inviteCode.trim()) {
+      setApiError('A valid company invitation is required to create an account.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const form = accountType === 'employee' ? empForm : ownerForm;
-      if (form.password !== form.confirmPassword) {
-        setApiError('Passwords do not match.');
-        setSubmitting(false);
+      const form = empForm;
+      if (form.password.length < 12) {
+        setApiError('Your password must contain at least 12 characters.');
         return;
       }
-      const nameParts = form.name.trim().split(' ');
-      const payload = {
-        email:           form.email,
-        password:        form.password,
+      if (form.password !== form.confirmPassword) {
+        setApiError('Passwords do not match.');
+        return;
+      }
+      const nameParts = form.name.trim().split(/\\s+/);
+      await authService.register({
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
         confirmPassword: form.confirmPassword,
-        firstName:       nameParts[0] || '',
-        lastName:        nameParts.slice(1).join(' ') || '',
-        companyName:     accountType === 'owner' ? companyForm.companyName : null,
-        inviteCode:      accountType === 'employee' ? inviteCode : null,
-      };
-      await authService.register(payload);
-      navigate('/login');
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || '',
+        inviteCode: inviteCode.trim(),
+      });
+      navigate('/login', { replace: true });
     } catch (err) {
-      setApiError(err.response?.data?.message || 'Registration failed. Please try again.');
+      setApiError(err.response?.data?.message || 'Registration failed. Check that your invitation is valid and has not expired.');
     } finally {
       setSubmitting(false);
     }
@@ -129,21 +136,17 @@ export default function SignUp() {
           <ArrowRight size={20} className="text-text-muted mt-1 shrink-0 group-hover:text-orange transition-colors" />
         </div>
       </button>
-      <button
-        onClick={() => { setAccountType('owner'); setStep('company'); }}
-        className="w-full p-5 bg-bg border border-border rounded-xl hover:border-orange/50 hover:bg-surface-hover transition-all text-left group"
-      >
+      <div className="w-full p-5 bg-bg border border-border rounded-xl opacity-70">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-orange/10 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-orange/20 transition-colors">
-            <Building2 size={24} className="text-orange" />
+          <div className="w-12 h-12 bg-surface rounded-xl flex items-center justify-center shrink-0">
+            <Building2 size={24} className="text-text-muted" />
           </div>
           <div>
-            <p className="text-text-primary font-medium mb-1">Create a Company</p>
-            <p className="text-sm text-text-secondary">I'm a company owner and want to set up my organization on TaskTune.</p>
+            <p className="text-text-primary font-medium mb-1">Company setup</p>
+            <p className="text-sm text-text-secondary">New workspaces are provisioned by an administrator. Contact the TaskTune team to set up a company.</p>
           </div>
-          <ArrowRight size={20} className="text-text-muted mt-1 shrink-0 group-hover:text-orange transition-colors" />
         </div>
-      </button>
+      </div>
     </div>
   );
 

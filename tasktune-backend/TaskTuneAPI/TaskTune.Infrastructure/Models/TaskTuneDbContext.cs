@@ -64,6 +64,10 @@ public partial class TaskTuneDbContext : DbContext
 
     public virtual DbSet<UserSetting> UserSettings { get; set; }
 
+    public virtual DbSet<UserSession> UserSessions { get; set; }
+
+    public virtual DbSet<AccountSecurityToken> AccountSecurityTokens { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AIActionsLog>(entity =>
@@ -687,6 +691,47 @@ public partial class TaskTuneDbContext : DbContext
             && e.Thread.User.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<UserSetting>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.User.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<UserSession>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.User.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<AccountSecurityToken>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault);
+
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.ToTable("UserSessions");
+            entity.HasKey(e => e.SessionId);
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.IpAddress).HasMaxLength(45);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.FamilyId });
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AccountSecurityToken>(entity =>
+        {
+            entity.ToTable("AccountSecurityTokens");
+            entity.HasKey(e => e.AccountSecurityTokenId);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Purpose).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.Purpose, e.Email });
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Department>().WithMany().HasForeignKey(e => e.DepartmentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Position>().WithMany().HasForeignKey(e => e.PositionId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
 
         OnModelCreatingPartial(modelBuilder);
     }

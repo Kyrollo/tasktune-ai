@@ -28,11 +28,12 @@ export default function UsersManagement() {
   const [roleFilter, setRoleFilter] = useState('All');
   const [showCreate, setShowCreate] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: '', lastName: '', email: '', password: '', role: 0, departmentId: '', positionId: '',
+    email: '', role: 0, departmentId: '',
   });
   const [departments, setDepartments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
 
   const roles = ['All', 'Employee', 'Supervisor', 'Manager', 'CEO', 'HR', 'Admin'];
   const statusVariant = { Active: 'success', Inactive: 'danger' };
@@ -58,30 +59,25 @@ export default function UsersManagement() {
   }, []);
 
   const handleCreateUser = async () => {
-    if (!formData.firstName || !formData.email || !formData.password) {
-      setCreateError('First name, email, and password are required.');
+    if (!formData.email.trim()) {
+      setCreateError('An email address is required.');
       return;
     }
     try {
       setSubmitting(true);
       setCreateError('');
-      await userService.createUser({
-        firstName: formData.firstName,
-        lastName: formData.lastName || '',
-        email: formData.email,
-        password: formData.password,
+      setInviteMessage('');
+      await userService.createInvitation({
+        email: formData.email.trim().toLowerCase(),
         role: Number(formData.role),
         departmentId: formData.departmentId ? Number(formData.departmentId) : null,
-        positionId: formData.positionId ? Number(formData.positionId) : null,
+        positionId: null,
       });
-      const { data } = await userService.getUsers();
-      const raw = Array.isArray(data) ? data : data.items || [];
-      setUsers(raw.map(normalizeUser));
+      setInviteMessage('Invitation sent. The person can finish account creation using the one-time link in their email.');
       setShowCreate(false);
-      setFormData({ firstName: '', lastName: '', email: '', password: '', role: 0, departmentId: '', positionId: '' });
+      setFormData({ email: '', role: 0, departmentId: '' });
     } catch (err) {
-      console.error('Failed to create user:', err);
-      setCreateError(err.response?.data?.message || 'Failed to create user. Please check the data and try again.');
+      setCreateError(err.response?.data?.message || 'Failed to send invitation. Check the email, role, and organization details.');
     } finally {
       setSubmitting(false);
     }
@@ -131,13 +127,15 @@ export default function UsersManagement() {
               className="pl-9 pr-4 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
             />
           </div>
-          <Button onClick={() => setShowCreate(true)}>
+          <Button onClick={() => { setInviteMessage(''); setShowCreate(true); }}>
             <span className="flex items-center gap-2">
-              <UserPlus size={16} /> Add User
+              <UserPlus size={16} /> Invite User
             </span>
           </Button>
         </div>
       </div>
+
+      {inviteMessage && <div className="mb-4 p-3 bg-success/10 border border-success/20 rounded-lg text-sm text-success">{inviteMessage}</div>}
 
       {/* Users table */}
       <Card>
@@ -197,11 +195,11 @@ export default function UsersManagement() {
         </div>
       </Card>
 
-      {/* Create User Modal */}
+      {/* Invitation Modal */}
       <Modal
         isOpen={showCreate}
         onClose={() => { setShowCreate(false); setCreateError(''); }}
-        title="Add New User"
+        title="Invite a User"
       >
         <div className="space-y-4">
           {createError && (
@@ -209,47 +207,19 @@ export default function UsersManagement() {
               {createError}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1.5">First Name *</label>
-              <input
-                value={formData.firstName}
-                onChange={(e) => setFormData((prev) => ({ ...prev, firstName: e.target.value }))}
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
-                placeholder="First name..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1.5">Last Name</label>
-              <input
-                value={formData.lastName}
-                onChange={(e) => setFormData((prev) => ({ ...prev, lastName: e.target.value }))}
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
-                placeholder="Last name..."
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1.5">Email *</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
-                placeholder="Email..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1.5">Password *</label>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
-                placeholder="Password..."
-              />
-            </div>
+          <p className="text-sm text-text-secondary">
+            The invitee will receive a one-time, 48-hour link to verify their email and create their own password.
+          </p>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1.5">Work Email *</label>
+            <input
+              type="email"
+              autoComplete="email"
+              value={formData.email}
+              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+              className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
+              placeholder="person@company.com"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -259,13 +229,9 @@ export default function UsersManagement() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value }))}
                 className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-orange appearance-none"
               >
-                {roles
-                  .filter((r) => r !== 'All')
-                  .map((r) => (
-                    <option key={r} value={ROLE_TO_BYTE[r] ?? 0}>
-                      {r}
-                    </option>
-                  ))}
+                {roles.filter((role) => role !== 'All' && role !== 'Admin').map((role) => (
+                  <option key={role} value={ROLE_TO_BYTE[role] ?? 0}>{role}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -276,24 +242,18 @@ export default function UsersManagement() {
                 className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-orange appearance-none"
               >
                 <option value="">Select department...</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>{department.name}</option>
                 ))}
               </select>
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => { setShowCreate(false); setCreateError(''); }}
-              disabled={submitting}
-            >
+            <Button variant="secondary" onClick={() => { setShowCreate(false); setCreateError(''); }} disabled={submitting}>
               Cancel
             </Button>
             <Button onClick={handleCreateUser} disabled={submitting}>
-              {submitting ? 'Creating...' : 'Add User'}
+              {submitting ? 'Sending...' : 'Send Invitation'}
             </Button>
           </div>
         </div>
