@@ -29,6 +29,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<TaskTuneDbContext>(options => options.UseSqlServer(connectionString));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITaskService, TaskService>();
+builder.Services.AddScoped<TenantEntitlementService>();
 builder.Services.AddHttpClient("agents", client => client.Timeout = TimeSpan.FromSeconds(120));
 builder.Services.AddHealthChecks();
 
