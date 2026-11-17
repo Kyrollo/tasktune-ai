@@ -64,7 +64,7 @@ public sealed class TenantEntitlementService
 
     public async Task EnsureAiRequestCapacityAsync(int companyId)
     {
-        var (subscription, plan) = await GetCurrentAsync(companyId);
+        var (_, plan) = await GetCurrentAsync(companyId);
         if (!plan.MaxMonthlyAiRequests.HasValue) return;
 
         var now = DateTime.UtcNow;
@@ -84,6 +84,26 @@ public sealed class TenantEntitlementService
                 StatusCodes.Status429TooManyRequests);
     }
 
+
+    public async Task EnsureStorageCapacityAsync(int companyId, long incomingBytes)
+    {
+        if (incomingBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(incomingBytes), "Incoming storage bytes must be positive.");
+
+        var (_, plan) = await GetCurrentAsync(companyId);
+        if (!plan.MaxStorageBytes.HasValue) return;
+
+        var used = await _db.TenantUsageEvents.AsNoTracking()
+            .Where(e => e.CompanyId == companyId && e.MeterKey == "storage_bytes")
+            .SumAsync(e => (decimal?)e.Quantity) ?? 0m;
+        var safeUsed = Math.Max(0m, used);
+
+        if (safeUsed + incomingBytes > plan.MaxStorageBytes.Value)
+            throw new TenantEntitlementException(
+                $"The company has reached its storage limit of {FormatBytes(plan.MaxStorageBytes.Value)}. Remove files or upgrade the plan.",
+                StatusCodes.Status413PayloadTooLarge);
+    }
+
     public async Task RecordUsageAsync(
         int companyId,
         string meterKey,
@@ -95,25 +115,27 @@ public sealed class TenantEntitlementService
     {
         if (string.IsNullOrWhiteSpace(meterKey) || meterKey.Length > 60)
             throw new ArgumentException("Meter key must be between 1 and 60 characters.", nameof(meterKey));
-        if (quantity <= 0)
-            throw new ArgumentOutOfRangeException(nameof(quantity), "Usage quantity must be positive.");
+        var normalizedMeterKey = meterKey.Trim().ToLowerInvariant();
+        if (quantity == 0 || (quantity < 0 && normalizedMeterKey != "storage_bytes"))
+            throw new ArgumentOutOfRangeException(nameof(quantity), "Usage quantity must be positive, except storage_bytes may use a negative delta for deletion.");
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 160)
             throw new ArgumentException("Idempotency key must be between 1 and 160 characters.", nameof(idempotencyKey));
 
         if (await _db.TenantUsageEvents.AnyAsync(e => e.CompanyId == companyId && e.IdempotencyKey == idempotencyKey))
             return;
 
-        _db.TenantUsageEvents.Add(new TenantUsageEvent
+        var usageEvent = new TenantUsageEvent
         {
             CompanyId = companyId,
-            MeterKey = meterKey.Trim().ToLowerInvariant(),
+            MeterKey = normalizedMeterKey,
             Quantity = quantity,
             IdempotencyKey = idempotencyKey,
             ResourceType = resourceType,
             ResourceId = resourceId,
             MetadataJson = metadata == null ? null : JsonSerializer.Serialize(metadata),
             OccurredAt = DateTime.UtcNow
-        });
+        };
+        _db.TenantUsageEvents.Add(usageEvent);
 
         try
         {
@@ -121,6 +143,7 @@ public sealed class TenantEntitlementService
         }
         catch (DbUpdateException)
         {
+            _db.Entry(usageEvent).State = EntityState.Detached;
             // Unique (CompanyId, IdempotencyKey) makes retrying a metering event safe.
             if (!await _db.TenantUsageEvents.AnyAsync(e => e.CompanyId == companyId && e.IdempotencyKey == idempotencyKey))
                 throw;
@@ -131,20 +154,25 @@ public sealed class TenantEntitlementService
     {
         var (subscription, plan) = await GetCurrentAsync(companyId);
         var now = DateTime.UtcNow;
-        var periodStart = subscription.CurrentPeriodStart;
-        var periodEnd = subscription.CurrentPeriodEnd;
-        var events = await _db.TenantUsageEvents.AsNoTracking()
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var nextMonth = monthStart.AddMonths(1);
+
+        var monthlyEvents = await _db.TenantUsageEvents.AsNoTracking()
             .Where(e => e.CompanyId == companyId &&
-                        e.OccurredAt >= periodStart &&
-                        e.OccurredAt < periodEnd)
+                        e.MeterKey != "storage_bytes" &&
+                        e.OccurredAt >= monthStart &&
+                        e.OccurredAt < nextMonth)
             .GroupBy(e => e.MeterKey)
             .Select(g => new { Meter = g.Key, Quantity = g.Sum(x => x.Quantity) })
             .ToListAsync();
 
+        var storageBytes = await _db.TenantUsageEvents.AsNoTracking()
+            .Where(e => e.CompanyId == companyId && e.MeterKey == "storage_bytes")
+            .SumAsync(e => (decimal?)e.Quantity) ?? 0m;
+
         var activeEmployees = await _db.Users.AsNoTracking()
             .CountAsync(u => u.CompanyId == companyId && u.IsActive);
-        var aiRequests = events.FirstOrDefault(e => e.Meter == "ai_request")?.Quantity ?? 0m;
-        var storageBytes = events.FirstOrDefault(e => e.Meter == "storage_bytes")?.Quantity ?? 0m;
+        var aiRequests = monthlyEvents.FirstOrDefault(e => e.Meter == "ai_request")?.Quantity ?? 0m;
 
         return new
         {
@@ -161,6 +189,13 @@ public sealed class TenantEntitlementService
                 plan.PriceMinorUnits,
                 plan.CurrencyCode
             },
+            Plan = new
+            {
+                plan.Code,
+                plan.Name,
+                plan.Description,
+                plan.EnabledModulesJson
+            },
             Limits = new
             {
                 plan.MaxActiveEmployees,
@@ -170,12 +205,25 @@ public sealed class TenantEntitlementService
             Usage = new
             {
                 ActiveEmployees = activeEmployees,
-                StorageBytes = storageBytes,
+                StorageBytes = Math.Max(0m, storageBytes),
                 AiRequests = aiRequests,
-                Events = events
+                Events = monthlyEvents
             },
             GeneratedAt = now
         };
+    }
+
+    private static string FormatBytes(long value)
+    {
+        var units = new[] { "B", "KB", "MB", "GB", "TB" };
+        var amount = (double)value;
+        var unit = 0;
+        while (amount >= 1024 && unit < units.Length - 1)
+        {
+            amount /= 1024;
+            unit++;
+        }
+        return $"{amount:0.#} {units[unit]}";
     }
 
     private static List<string> ParseModules(string json)
