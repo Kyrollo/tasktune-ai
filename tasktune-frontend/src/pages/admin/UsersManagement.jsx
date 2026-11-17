@@ -257,7 +257,7 @@ export default function UsersManagement() {
             </Button>
           </div>
         </div>
-      </Modal>Modal>
+      </Modal>
     </AppLayout>
   );
 }
