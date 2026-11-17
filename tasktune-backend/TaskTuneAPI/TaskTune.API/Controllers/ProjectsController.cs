@@ -8,6 +8,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[RequireModule("projects")]
 [Authorize]
 public class ProjectsController : BaseApiController
 {
