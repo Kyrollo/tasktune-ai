@@ -243,13 +243,15 @@ public sealed class LeaveController : BaseApiController
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
         if (userId == null || companyId == null) return Unauthorized();
-        if (request.StartDate.Year != request.EndDate.Year ||
-            request.StartDate.Year is < 2000 or > 2200 ||
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (request.StartDate.Year is < 2000 or > 2200 ||
+            request.EndDate.Year is < 2000 or > 2200 ||
             request.EndDate < request.StartDate ||
-            request.StartDate < DateOnly.FromDateTime(DateTime.UtcNow))
-            return BadRequest(new { message = "Leave requests must have valid, future-or-current dates within one calendar year." });
+            request.StartDate < today)
+            return BadRequest(new { message = "Leave requests must have valid future-or-current dates." });
         if (request.EndDate.DayNumber - request.StartDate.DayNumber > 366)
-            return BadRequest(new { message = "The requested date range is too long." });
+            return BadRequest(new { message = "The requested date range cannot exceed 367 calendar days." });
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 2000)
             return BadRequest(new { message = "A reason of up to 2,000 characters is required." });
 
@@ -259,16 +261,19 @@ public sealed class LeaveController : BaseApiController
             x.CompanyId == companyId.Value &&
             x.IsActive);
         if (leaveType == null) return NotFound(new { message = "Leave type not found." });
+        if (leaveType.RequiresAttachment)
+            return BadRequest(new { message = "This leave type requires supporting evidence. Evidence upload must be enabled for this company before requests can be submitted." });
 
         var holidays = await _db.CompanyHolidays.AsNoTracking()
             .Where(x => x.CompanyId == companyId.Value && x.IsActive &&
                         x.HolidayDate >= request.StartDate && x.HolidayDate <= request.EndDate)
             .Select(x => x.HolidayDate)
             .ToListAsync();
-        var days = CountWorkingDays(request.StartDate, request.EndDate, holidays);
-        if (days <= 0)
+        var daysByYear = CountWorkingDaysByYear(request.StartDate, request.EndDate, holidays);
+        var totalDays = daysByYear.Values.Sum();
+        if (totalDays <= 0)
             return BadRequest(new { message = "The selected date range contains no working days." });
-        if (leaveType.MaximumConsecutiveDays > 0 && days > leaveType.MaximumConsecutiveDays)
+        if (leaveType.MaximumConsecutiveDays > 0 && totalDays > leaveType.MaximumConsecutiveDays)
             return BadRequest(new { message = $"This leave type permits at most {leaveType.MaximumConsecutiveDays:0.##} working days per request." });
 
         var overlaps = await _db.LeaveRequests.AnyAsync(x =>
@@ -280,19 +285,30 @@ public sealed class LeaveController : BaseApiController
         if (overlaps)
             return Conflict(new { message = "This request overlaps another pending or approved leave request." });
 
-        var balance = await _db.LeaveBalances.FirstOrDefaultAsync(x =>
+        var years = daysByYear.Keys.ToList();
+        var balances = await _db.LeaveBalances.Where(x =>
             x.CompanyId == companyId.Value &&
             x.UserId == userId.Value &&
             x.LeaveTypeId == leaveType.LeaveTypeId &&
-            x.Year == request.StartDate.Year);
-        if (balance == null)
-            return Conflict(new { message = "No leave balance has been allocated for this leave type and year. Contact HR." });
+            years.Contains(x.Year))
+            .ToListAsync();
 
-        var available = balance.AllocatedDays + balance.CarriedOverDays - balance.UsedDays - balance.PendingDays;
-        if (available < days)
-            return Conflict(new { message = $"Insufficient leave balance. Available: {available:0.##} days; requested: {days:0.##} days." });
+        var allocations = new List<(LeaveBalance Balance, decimal Days)>();
+        foreach (var yearDays in daysByYear.OrderBy(x => x.Key))
+        {
+            var balance = balances.FirstOrDefault(x => x.Year == yearDays.Key);
+            if (balance == null)
+                return Conflict(new { message = $"No leave balance has been allocated for {yearDays.Key}. Contact HR." });
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var available = balance.AllocatedDays + balance.CarriedOverDays - balance.UsedDays - balance.PendingDays;
+            if (available < yearDays.Value)
+                return Conflict(new
+                {
+                    message = $"Insufficient leave balance for {yearDays.Key}. Available: {available:0.##} days; required: {yearDays.Value:0.##} days."
+                });
+            allocations.Add((balance, yearDays.Value));
+        }
+
         var approverId = await (
             from line in _db.EmployeeReportingLines
             join manager in _db.Users on line.ManagerUserId equals manager.UserId
@@ -314,7 +330,7 @@ public sealed class LeaveController : BaseApiController
             LeaveTypeId = leaveType.LeaveTypeId,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
-            RequestedDays = days,
+            RequestedDays = totalDays,
             Reason = request.Reason.Trim(),
             Status = leaveType.RequiresApproval ? "pending" : "approved",
             ApproverUserId = approverId,
@@ -325,18 +341,41 @@ public sealed class LeaveController : BaseApiController
             UpdatedAt = DateTime.UtcNow
         };
 
-        if (leaveType.RequiresApproval)
-            balance.PendingDays += days;
-        else
-            balance.UsedDays += days;
-        balance.UpdatedAt = DateTime.UtcNow;
-
         _db.LeaveRequests.Add(leaveRequest);
+        await _db.SaveChangesAsync();
+
+        foreach (var allocation in allocations)
+        {
+            if (leaveType.RequiresApproval)
+                allocation.Balance.PendingDays += allocation.Days;
+            else
+                allocation.Balance.UsedDays += allocation.Days;
+            allocation.Balance.UpdatedAt = DateTime.UtcNow;
+
+            _db.LeaveRequestBalanceAllocations.Add(new LeaveRequestBalanceAllocation
+            {
+                CompanyId = companyId.Value,
+                LeaveRequestId = leaveRequest.LeaveRequestId,
+                LeaveBalanceId = allocation.Balance.LeaveBalanceId,
+                LeaveYear = allocation.Balance.Year,
+                AllocatedDays = allocation.Days,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
 
         await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "CREATE", "LeaveRequest", leaveRequest.LeaveRequestId,
-            after: new { leaveRequest.LeaveTypeId, leaveRequest.StartDate, leaveRequest.EndDate, leaveRequest.RequestedDays, leaveRequest.Status });
+            after: new
+            {
+                leaveRequest.LeaveTypeId,
+                leaveRequest.StartDate,
+                leaveRequest.EndDate,
+                leaveRequest.RequestedDays,
+                leaveRequest.Status,
+                AnnualAllocations = allocations.Select(x => new { x.Balance.Year, x.Days }).ToList()
+            });
 
         return CreatedAtAction(nameof(GetMyRequests), new { }, new
         {
