@@ -478,7 +478,7 @@ public class CommunicationsController : BaseApiController
             .ToListAsync();
     }
 
-    private static Task<(bool success, string? error)> TrySendEmailsAsync(
+    private static System.Threading.Tasks.Task<(bool success, string? error)> TrySendEmailsAsync(
         IEnumerable<string> recipients,
         IEnumerable<string>? ccEmails,
         string subject,
@@ -487,7 +487,7 @@ public class CommunicationsController : BaseApiController
         // Direct SMTP sending is intentionally disabled until communication approval,
         // delivery idempotency and an auditable recipient allowlist are implemented.
         // The request is recorded for review; this endpoint does not send external mail.
-        return Task.FromResult<(bool success, string? error)>((
+        return System.Threading.Tasks.Task.FromResult<(bool success, string? error)>((
             false,
             "Pending approval: direct outbound email is disabled until the approval workflow is available."));
     }
