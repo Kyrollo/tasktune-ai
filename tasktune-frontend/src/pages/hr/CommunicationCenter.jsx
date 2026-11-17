@@ -19,6 +19,10 @@ export default function CommunicationCenter() {
   const [approvalReasons, setApprovalReasons] = useState({});
   const [approvalBusyId, setApprovalBusyId] = useState(null);
   const [approvalError, setApprovalError] = useState('');
+  const [deadLetterItems, setDeadLetterItems] = useState([]);
+  const [deadLetterReasons, setDeadLetterReasons] = useState({});
+  const [outboxBusyId, setOutboxBusyId] = useState(null);
+  const [canManageOutbox, setCanManageOutbox] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => window.crypto.randomUUID());
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -49,18 +53,24 @@ export default function CommunicationCenter() {
   };
 
   const refreshApprovals = async () => {
-    const { data } = await communicationService.getApprovals();
-    setPendingApprovals(data?.items ?? []);
+    const [approvalsResponse, deadLetterResponse] = await Promise.all([
+      communicationService.getApprovals(),
+      communicationService.getDeadLetterOutbox().catch(() => null),
+    ]);
+    setPendingApprovals(approvalsResponse.data?.items ?? []);
+    setCanManageOutbox(Boolean(deadLetterResponse));
+    setDeadLetterItems(deadLetterResponse?.data?.items ?? []);
   };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [commsRes, usersRes, overviewRes, approvalsRes] = await Promise.all([
+        const [commsRes, usersRes, overviewRes, approvalsRes, deadLetterRes] = await Promise.all([
           communicationService.getCommunications(),
           userService.getUsers(),
           communicationService.getOverview().catch(() => ({ data: null })),
           communicationService.getApprovals().catch(() => ({ data: { items: [] } })),
+          communicationService.getDeadLetterOutbox().catch(() => null),
         ]);
         const commsData = commsRes.data;
         const usersData = usersRes.data;
@@ -71,6 +81,8 @@ export default function CommunicationCenter() {
         setAgentInfo(overviewRes.data?.agent || null);
         setStats(overviewRes.data?.stats || { totalSent: 0, scheduled: 0 });
         setPendingApprovals(approvalsRes.data?.items ?? []);
+        setCanManageOutbox(Boolean(deadLetterRes));
+        setDeadLetterItems(deadLetterRes?.data?.items ?? []);
       } catch (err) {
         console.error('Failed to load communications:', err);
       } finally {
@@ -183,6 +195,31 @@ export default function CommunicationCenter() {
       setApprovalError(err.response?.data?.message || 'Approval failed. Refresh the queue and try again.');
     } finally {
       setApprovalBusyId(null);
+    }
+  };
+
+  const handleReplayDeadLetter = async (outboxId) => {
+    const reason = (deadLetterReasons[outboxId] || '').trim();
+    if (reason.length < 5) {
+      setApprovalError('Record what was checked before replaying this delivery (at least 5 characters).');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Manual replay can send a duplicate if the SMTP provider accepted the previous attempt but TaskTune did not record it. Check provider logs first. Continue?'
+    );
+    if (!confirmed) return;
+
+    try {
+      setOutboxBusyId(outboxId);
+      setApprovalError('');
+      await communicationService.replayDeadLetter(outboxId, reason);
+      setDeadLetterReasons((current) => ({ ...current, [outboxId]: '' }));
+      await refreshApprovals();
+    } catch (err) {
+      setApprovalError(err.response?.data?.message || 'The delivery could not be requeued. Refresh the queue and try again.');
+    } finally {
+      setOutboxBusyId(null);
     }
   };
 
@@ -476,6 +513,53 @@ export default function CommunicationCenter() {
               Approval creates durable delivery records. This environment does not send external email until the delivery worker is separately enabled.
             </p>
           </Card>
+
+          {canManageOutbox && (
+            <Card>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-base font-semibold text-text-primary">Dead-lettered Deliveries</h3>
+                <Badge variant={deadLetterItems.length ? 'warning' : 'success'}>{deadLetterItems.length} pending review</Badge>
+              </div>
+              <p className="text-xs text-warning mb-3">
+                Replay is manual. SMTP is at-least-once, so a provider-accepted message may be delivered twice if the previous result was ambiguous. Check provider logs before retrying.
+              </p>
+              {deadLetterItems.length === 0 ? (
+                <p className="text-sm text-text-muted">No dead-lettered deliveries require reconciliation.</p>
+              ) : (
+                <div className="space-y-3">
+                  {deadLetterItems.map((item) => (
+                    <div key={item.outboxId} className="p-3 bg-bg rounded-lg border border-border/50">
+                      <p className="text-sm font-medium text-text-primary">{item.subject}</p>
+                      <p className="text-xs text-text-muted mt-1 break-all">To: {item.recipientEmail}</p>
+                      <p className="text-xs text-text-muted mt-1">
+                        Approval #{item.approvalId} · {item.attempts} attempt(s) · {new Date(item.createdAt).toLocaleString()}
+                      </p>
+                      {item.lastError && <p className="text-xs text-warning mt-2">{item.lastError}</p>}
+                      <textarea
+                        value={deadLetterReasons[item.outboxId] || ''}
+                        onChange={(event) => setDeadLetterReasons((current) => ({ ...current, [item.outboxId]: event.target.value }))}
+                        rows={2}
+                        maxLength={1000}
+                        placeholder="Reconciliation notes (required before replay)"
+                        className="w-full mt-3 bg-bg border border-border rounded-lg px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-orange"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleReplayDeadLetter(item.outboxId)}
+                        disabled={outboxBusyId !== null || (deadLetterReasons[item.outboxId] || '').trim().length < 5}
+                      >
+                        {outboxBusyId === item.outboxId ? 'Requeueing...' : 'Replay after reconciliation'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-text-muted mt-3">
+                Replaying resets the retry counter but preserves the original delivery idempotency key and Message-ID. The worker must be enabled separately to send queued items.
+              </p>
+            </Card>
+          )}
 
           <Card>
             <h3 className="text-base font-semibold text-text-primary mb-3">Communication History</h3>

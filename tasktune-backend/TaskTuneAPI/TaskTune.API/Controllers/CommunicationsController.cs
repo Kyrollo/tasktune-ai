@@ -17,12 +17,18 @@ public class CommunicationsController : BaseApiController
     private readonly TaskTuneDbContext _db;
     private readonly IConfiguration _configuration;
     private readonly CommunicationApprovalService _approvalService;
+    private readonly CommunicationOutboxOperationsService _outboxOperations;
 
-    public CommunicationsController(TaskTuneDbContext db, IConfiguration configuration, CommunicationApprovalService approvalService)
+    public CommunicationsController(
+        TaskTuneDbContext db,
+        IConfiguration configuration,
+        CommunicationApprovalService approvalService,
+        CommunicationOutboxOperationsService outboxOperations)
     {
         _db = db;
         _configuration = configuration;
         _approvalService = approvalService;
+        _outboxOperations = outboxOperations;
     }
 
     [HttpGet]
@@ -517,6 +523,83 @@ public class CommunicationsController : BaseApiController
         return Ok(new { approvalId, status = "Rejected", message = "Communication rejected. No email was sent." });
     }
 
+    [HttpGet("outbox/dead-letter")]
+    [Authorize(Roles = "CEO,Admin")]
+    public async Task<IActionResult> GetDeadLetterOutbox(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _db.CommunicationOutbox.AsNoTracking()
+            .Where(item => item.CompanyId == companyId.Value && item.Status == "DeadLetter");
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(item => item.CreatedAt)
+            .ThenBy(item => item.OutboxId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(item => new
+            {
+                outboxId = item.OutboxId,
+                item.ApprovalId,
+                item.RecipientEmail,
+                item.Subject,
+                item.Attempts,
+                item.CreatedAt,
+                item.LastError
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new
+        {
+            items,
+            totalCount = total,
+            deliveryWorkerEnabled = _configuration.GetValue<bool>("Email:Outbox:Enabled")
+        });
+    }
+
+    [HttpPost("outbox/{outboxId:long}/replay")]
+    [Authorize(Roles = "CEO,Admin")]
+    public async Task<IActionResult> ReplayDeadLetter(
+        long outboxId,
+        [FromBody] ReplayDeadLetterRequest request,
+        CancellationToken cancellationToken)
+    {
+        var companyId = GetCurrentCompanyId();
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
+
+        var reason = request?.Reason?.Trim() ?? string.Empty;
+        if (reason.Length < 5 || reason.Length > 1000)
+            return BadRequest(new { message = "A reconciliation reason between 5 and 1,000 characters is required." });
+
+        var result = await _outboxOperations.ReplayDeadLetterAsync(
+            outboxId, companyId.Value, userId.Value, reason, HttpContext, cancellationToken);
+
+        if (result == CommunicationOutboxReplayResult.NotFound) return NotFound();
+        if (result == CommunicationOutboxReplayResult.NotDeadLetter)
+            return Conflict(new { message = "Only dead-lettered deliveries can be replayed." });
+        if (result == CommunicationOutboxReplayResult.InvalidApprovalState)
+            return Conflict(new { message = "The parent approval is no longer approved. The delivery was not replayed." });
+        if (result == CommunicationOutboxReplayResult.Conflict)
+            return Conflict(new { message = "The delivery changed while replay was being requested. Refresh the queue and try again." });
+
+        return Accepted(new
+        {
+            outboxId,
+            status = "Pending",
+            attemptsReset = true,
+            message = "Delivery returned to the queue. SMTP is at-least-once: this may duplicate a message if the previous attempt was accepted by the provider but not recorded. Verify provider logs before replay."
+        });
+    }
+
     private async Task<User?> ResolveRecipientUser(int companyId, CreateCommunicationRequest request)
     {
         if (request.RecipientUserId.HasValue)
@@ -671,3 +754,9 @@ public class CommunicationRecommendationRequest
 }
 
 public record CommunicationTemplateDto(string key, string label, string subject, string body);
+
+
+public sealed class ReplayDeadLetterRequest
+{
+    public string? Reason { get; set; }
+}

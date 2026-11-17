@@ -113,7 +113,7 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 1. Complete the exhaustive endpoint-to-entity-to-action authorization matrix covering raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Controller authorization metadata and the 27-entity global-filter presence are now regression-tested; object/field-level and downstream negative tests remain open.
 2. Expand SQL Server schema and migration coverage: relationship-owned query filters, composite foreign keys, transactions, rowversion races, migration repeatability, forward compatibility and backup/restore rehearsal.
 3. Build and validate the private legacy attachment migration utility. The standalone tool now defaults to dry-run, validates flat legacy /Uploads paths, rejects traversal and reparse-point paths, checks file sizes and SHA-256, copies into the active private storage-key layout, updates metadata with a compare-and-set SQL transaction, and writes a prepared/committed JSONL rollback manifest. It never deletes legacy or private files. Deployment-specific dry-run, backup, apply and rollback rehearsal remain required.
-4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age alerts and an operator dead-letter/replay screen. Retry exhaustion is now persisted as DeadLetter; the dispatcher remains disabled by default.
+4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age metrics/alerts and bounce processing. Retry exhaustion and the CEO/Admin manual dead-letter replay screen are implemented; the dispatcher remains disabled by default.
 5. Complete outbound recipient policy, approval notifications, bounce handling and delivery audit. Production SMTP must remain disabled until end-to-end staging tests pass.
 6. Finish AI tool authorization, RAG document ACL enforcement, provider capability registry, usage budgets, egress allowlisting and managed secret-vault integration; verify prompt-injection and cross-tenant adversarial scenarios.
 7. Add enterprise MFA/SSO, frontend BFF/HttpOnly cookie migration, CSRF controls and privileged-account access reviews.
@@ -167,3 +167,18 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Run #77 confirmed the test helper compiles and the EF filter metadata test passes, but the new authorization test correctly exposed three health actions (live, ready, compatibility check) that were not declared anonymous after the health controller had been split into separate probe routes.
 - The health controller is intentionally public for orchestrator probes; it now declares class-level `[AllowAnonymous]`, and all three actions are explicitly included in the reviewed allow-list and endpoint documentation.
 - CI is being rerun against the updated grouped changes. No health endpoint returns tenant data or infrastructure connection details.
+
+
+## Completed — outbox dead-letter reconciliation controls
+
+- Added tenant-scoped CEO/Admin endpoints to list dead-lettered outbox rows and manually replay a selected row with a required reconciliation reason.
+- Replay is allowed only while the parent approval remains Approved and the outbox row is still DeadLetter. It resets attempts/lease state, returns the row to Pending, and preserves the original idempotency key/Message-ID.
+- The requeue and tenant audit event are saved atomically. Concurrent or stale replay attempts return Conflict; cross-tenant identifiers return Not Found.
+- Added a Communication Center dead-letter card, provider-log reconciliation warning, mandatory notes and an explicit browser confirmation before replay.
+- Added regression tests for successful replay, audit persistence, idempotency-key preservation, repeated replay rejection, cross-tenant denial and rejected-parent denial.
+- Added `docs/operations/communication-dead-letter-replay.md` for operator steps and duplicate-delivery cautions.
+
+## Remaining outbox delivery controls
+
+- Provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes remains necessary; the stable RFC Message-ID is not a guarantee of exactly-once delivery.
+- Per-tenant delivery quotas, queue-age metrics/alerts, bounce processing and a staging SMTP verification remain open. The worker stays disabled by default.
