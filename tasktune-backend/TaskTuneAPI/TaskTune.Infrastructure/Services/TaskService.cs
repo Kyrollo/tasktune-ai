@@ -62,6 +62,14 @@ public class TaskService : ITaskService
         return MapTaskResponse(task, aiRecommendation);
     }
 
+    public async Task<bool> CanAccessTaskAsync(int taskId, int requestedBy)
+    {
+        var user = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == requestedBy);
+        return user != null &&
+            await ApplyTaskScope(_context.Tasks, user).AnyAsync(t => t.TaskId == taskId);
+    }
+
     public async Task<TaskResponseDto> CreateAsync(CreateTaskDto dto, int createdBy)
     {
         if (_context.CurrentTenantId is not int companyId)

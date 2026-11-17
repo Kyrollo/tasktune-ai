@@ -16,24 +16,32 @@ public sealed class TenantIsolationTests
             var companyOne = CompanyFor(1);
             var companyTwo = CompanyFor(2);
             var userOne = UserFor(1, companyOne);
+            var employeeThree = UserFor(3, companyOne);
+            employeeThree.Role = 0;
             var userTwo = UserFor(2, companyTwo);
             var projectOne = ProjectFor(101, companyOne, userOne);
             var projectTwo = ProjectFor(202, companyTwo, userTwo);
             var taskOne = TaskFor(1001, projectOne, userOne);
             var taskTwo = TaskFor(2002, projectTwo, userTwo);
-            seed.AddRange(companyOne, companyTwo, userOne, userTwo, projectOne, projectTwo,
+            seed.AddRange(companyOne, companyTwo, userOne, employeeThree, userTwo, projectOne, projectTwo,
                 taskOne, taskTwo, SubtaskFor(11, taskOne), SubtaskFor(22, taskTwo));
             await seed.SaveChangesAsync();
         }
 
         await using var tenantOne = new TaskTuneDbContext(options, new FixedTenantContext(1));
         Assert.Equal(new[] { 1 }, await tenantOne.Companies.Select(c => c.CompanyId).ToArrayAsync());
-        Assert.Equal(new[] { 1 }, await tenantOne.Users.Select(u => u.CompanyId).ToArrayAsync());
+        Assert.Equal(2, await tenantOne.Users.CountAsync());
+        Assert.All(await tenantOne.Users.ToListAsync(), user => Assert.Equal(1, user.CompanyId));
         Assert.Equal(new[] { 1 }, await tenantOne.Projects.Select(p => p.CompanyId).ToArrayAsync());
         Assert.Equal(new[] { 1001 }, await tenantOne.Tasks.Select(t => t.TaskId).ToArrayAsync());
         Assert.Equal(new[] { 11 }, await tenantOne.Subtasks.Select(s => s.SubtaskId).ToArrayAsync());
-        Assert.Equal(2, await tenantOne.Users.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(3, await tenantOne.Users.IgnoreQueryFilters().CountAsync());
         Assert.Equal(2, await tenantOne.Tasks.IgnoreQueryFilters().CountAsync());
+
+        var taskService = new TaskTune.Infrastructure.Services.TaskService(tenantOne);
+        Assert.True(await taskService.CanAccessTaskAsync(1001, 1));
+        Assert.False(await taskService.CanAccessTaskAsync(1001, 3));
+        Assert.False(await taskService.CanAccessTaskAsync(2002, 1));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;
@@ -12,52 +13,52 @@ public class AttachmentsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly ITaskService _taskService;
     private const long MaxFileSize = 10 * 1024 * 1024;
 
-    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env)
+    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env, ITaskService taskService)
     {
         _db = db;
         _env = env;
+        _taskService = taskService;
+    }
+
+    private async Task<bool> CanAccessTaskAsync(int taskId)
+    {
+        var userId = GetCurrentUserId();
+        return userId.HasValue && await _taskService.CanAccessTaskAsync(taskId, userId.Value);
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAttachments(int taskId)
     {
-        if (!await _db.Tasks.AnyAsync(t => t.TaskId == taskId)) return NotFound();
-
-        var items = await _db.TaskAttachments
-            .Where(a => a.TaskId == taskId)
+        if (!await CanAccessTaskAsync(taskId)) return NotFound();
+        var items = await _db.TaskAttachments.Where(a => a.TaskId == taskId)
             .OrderByDescending(a => a.UploadedAt)
             .Select(a => new
             {
-                a.AttachmentId,
-                a.TaskId,
-                a.FileName,
-                a.FileSize,
-                a.MimeType,
-                a.UploadedAt,
-                a.UploadedBy,
+                a.AttachmentId, a.TaskId, a.FileName, a.FileSize, a.MimeType,
+                a.UploadedAt, a.UploadedBy,
                 UploaderName = a.UploadedByNavigation.FullName,
                 DownloadUrl = Url.Action(nameof(DownloadAttachment), new { taskId, attachmentId = a.AttachmentId })
-            })
-            .ToListAsync();
-
+            }).ToListAsync();
         return Ok(new { items });
     }
 
     [HttpGet("{attachmentId:int}")]
     public async Task<IActionResult> DownloadAttachment(int taskId, int attachmentId)
     {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (!await _taskService.CanAccessTaskAsync(taskId, userId.Value)) return NotFound();
+
         var attachment = await _db.TaskAttachments
             .FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == taskId);
         if (attachment == null) return NotFound();
 
         var storageRoot = GetPrivateUploadRoot();
-        var relativePath = (attachment.FilePath ?? string.Empty)
-            .Replace('\\', '/')
-            .TrimStart('/');
-        if (string.IsNullOrWhiteSpace(relativePath) ||
-            Path.IsPathRooted(relativePath) ||
+        var relativePath = (attachment.FilePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath) ||
             relativePath.Split('/').Any(segment => segment is "" or "." or ".."))
             return NotFound();
 
@@ -79,16 +80,12 @@ public class AttachmentsController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
-        if (!await _db.Tasks.AnyAsync(t => t.TaskId == taskId)) return NotFound();
+        if (!await _taskService.CanAccessTaskAsync(taskId, userId.Value)) return NotFound();
 
-        if (file == null || file.Length <= 0)
-            return BadRequest(new { message = "No file provided." });
-        if (file.Length > MaxFileSize)
-            return BadRequest(new { message = "File size exceeds 10 MB limit." });
-
+        if (file == null || file.Length <= 0) return BadRequest(new { message = "No file provided." });
+        if (file.Length > MaxFileSize) return BadRequest(new { message = "File size exceeds 10 MB limit." });
         var safeFileName = Path.GetFileName((file.FileName ?? string.Empty).Replace('\\', '/'));
-        if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName.Length > 255 ||
-            safeFileName.Any(char.IsControl))
+        if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName.Length > 255 || safeFileName.Any(char.IsControl))
             return BadRequest(new { message = "Invalid file name." });
 
         var uniqueName = $"{Guid.NewGuid():N}_{safeFileName}";
@@ -111,13 +108,9 @@ public class AttachmentsController : BaseApiController
 
         var attachment = new TaskAttachment
         {
-            TaskId = taskId,
-            UploadedBy = userId.Value,
-            FileName = safeFileName,
-            FilePath = storageKey,
-            FileSize = checked((int)file.Length),
-            MimeType = "application/octet-stream",
-            UploadedAt = DateTime.UtcNow
+            TaskId = taskId, UploadedBy = userId.Value, FileName = safeFileName,
+            FilePath = storageKey, FileSize = checked((int)file.Length),
+            MimeType = "application/octet-stream", UploadedAt = DateTime.UtcNow
         };
 
         try
@@ -136,12 +129,8 @@ public class AttachmentsController : BaseApiController
             new { taskId, attachmentId = attachment.AttachmentId },
             new
             {
-                attachment.AttachmentId,
-                attachment.TaskId,
-                attachment.FileName,
-                attachment.FileSize,
-                attachment.UploadedAt,
-                attachment.UploadedBy,
+                attachment.AttachmentId, attachment.TaskId, attachment.FileName,
+                attachment.FileSize, attachment.UploadedAt, attachment.UploadedBy,
                 UploaderName = user?.FullName
             });
     }
