@@ -11,7 +11,7 @@ namespace TaskTune.Tests;
 public sealed class AuthServiceTests
 {
     [Fact]
-    public async Task Login_RejectsLegacyPlaintextPassword()
+    public async System.Threading.Tasks.Task Login_RejectsLegacyPlaintextPassword()
     {
         await using var context = CreateContext();
         context.Users.Add(CreateUser("legacy-password-value"));
@@ -25,7 +25,7 @@ public sealed class AuthServiceTests
     }
 
     [Fact]
-    public async Task Login_StoresOnlyRefreshTokenDigest_AndRefreshRotatesToken()
+    public async System.Threading.Tasks.Task Login_StoresOnlyRefreshTokenDigest_AndRefreshRotatesToken()
     {
         await using var context = CreateContext();
         context.Users.Add(CreateUser(BCrypt.Net.BCrypt.HashPassword("Correct-Horse-Battery-42!")));
