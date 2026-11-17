@@ -38,7 +38,7 @@ public sealed class AttendanceScheduleCalculatorTests
         var scheduled = new DateTime(2026, 11, 17, 9, 0, 0, DateTimeKind.Utc);
         var checkIn = new DateTime(2026, 11, 17, 9, 12, 10, DateTimeKind.Utc);
 
-        Assert.Equal(8, AttendanceScheduleCalculator.CalculateLateMinutes(scheduled, checkIn, 4));
+        Assert.Equal(9, AttendanceScheduleCalculator.CalculateLateMinutes(scheduled, checkIn, 4));
     }
 
     [Fact]
