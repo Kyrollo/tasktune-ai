@@ -135,3 +135,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - File copies are streamed and SHA-256 verified before a compare-and-set SQL transaction updates `TaskAttachments.FilePath`.
 - An append-only JSONL manifest records prepared and committed states. `--rollback` restores metadata only if the row still points at this tool's private key and the private copy verifies.
 - Neither apply nor rollback deletes files. Actual deployment roots, backups, real migration execution and post-migration application validation remain deployment-specific and have not been run from CI.
+
+
+## Operational readiness checkpoint — 18 November 2026
+
+- The communication approval/outbox foundation and private legacy-attachment migration utility are present on `main-reindex`. The outbox worker remains opt-in and the attachment utility remains dry-run by default.
+- Added `docs/engineering/production-readiness-runbook.md` covering the ordered SQL migration sequence, backup/restore evidence, private attachment cutover, SMTP enablement gates, observability, incident response and go/no-go criteria.
+- This checkpoint is documentation and operational sequencing only. No production database, SMTP provider, legacy upload root, secret manager, backup target or restore environment was accessed or changed.
+- Current branch head at checkpoint: `6450884b59de11f64b791d49d02185cdbe78a5e1`. The GitHub connector did not return a CI run for this head; do not infer a passing build from earlier phase runs.
+- Next implementation work remains: finish the exhaustive authorization matrix and adversarial tests; validate migrations and attachment migration against a disposable SQL Server/deployment-like environment; implement operator-facing dead-letter reconciliation and delivery audit; add telemetry/health probes and backup automation; remediate dependency and secret-history findings; then complete independent security and launch review.
