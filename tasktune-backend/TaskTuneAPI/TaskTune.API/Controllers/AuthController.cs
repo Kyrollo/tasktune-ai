@@ -30,6 +30,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("login")]
     [EnableRateLimiting("auth")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto dto)
     {
         var result = await _authService.LoginAsync(dto, Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
@@ -39,6 +40,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("refresh-token")]
     [EnableRateLimiting("auth")]
+    [AllowAnonymous]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDto dto)
     {
         var result = await _authService.RefreshTokenAsync(dto.RefreshToken, Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
@@ -65,6 +67,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("forgot-password")]
     [EnableRateLimiting("auth")]
+    [AllowAnonymous]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto, CancellationToken cancellationToken)
     {
         await _accountWorkflow.RequestPasswordResetAsync(dto.Email, cancellationToken);
@@ -73,6 +76,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("reset-password")]
     [EnableRateLimiting("auth")]
+    [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountWorkflow.ResetPasswordAsync(
@@ -83,6 +87,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [EnableRateLimiting("auth")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountWorkflow.CompleteInvitationAsync(

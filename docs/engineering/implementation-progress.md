@@ -110,7 +110,7 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 
 ## Remaining implementation and production gates
 
-1. Finish the exhaustive authorization matrix covering endpoints, raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Add negative tests for each privileged boundary and cross-tenant resource.
+1. Complete the exhaustive endpoint-to-entity-to-action authorization matrix covering raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Controller authorization metadata and the 27-entity global-filter presence are now regression-tested; object/field-level and downstream negative tests remain open.
 2. Expand SQL Server schema and migration coverage: relationship-owned query filters, composite foreign keys, transactions, rowversion races, migration repeatability, forward compatibility and backup/restore rehearsal.
 3. Build and validate the private legacy attachment migration utility. The standalone tool now defaults to dry-run, validates flat legacy /Uploads paths, rejects traversal and reparse-point paths, checks file sizes and SHA-256, copies into the active private storage-key layout, updates metadata with a compare-and-set SQL transaction, and writes a prepared/committed JSONL rollback manifest. It never deletes legacy or private files. Deployment-specific dry-run, backup, apply and rollback rehearsal remain required.
 4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age alerts and an operator dead-letter/replay screen. Retry exhaustion is now persisted as DeadLetter; the dispatcher remains disabled by default.
@@ -144,3 +144,13 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - This checkpoint is documentation and operational sequencing only. No production database, SMTP provider, legacy upload root, secret manager, backup target or restore environment was accessed or changed.
 - Current branch head at checkpoint: `6450884b59de11f64b791d49d02185cdbe78a5e1`. The GitHub connector did not return a CI run for this head; do not infer a passing build from earlier phase runs.
 - Next implementation work remains: finish the exhaustive authorization matrix and adversarial tests; validate migrations and attachment migration against a disposable SQL Server/deployment-like environment; implement operator-facing dead-letter reconciliation and delivery audit; add telemetry/health probes and backup automation; remediate dependency and secret-history findings; then complete independent security and launch review.
+
+
+## Completed — authorization metadata and tenant-filter regression gate
+
+- Marked the five intended anonymous AuthController actions and the coarse health endpoint explicitly with `[AllowAnonymous]`; authenticated session actions remain protected.
+- Added reflection-based API metadata tests requiring every routed API action to declare class- or method-level `[Authorize]` or explicit `[AllowAnonymous]`.
+- Added an exact anonymous-action allowlist test, so adding a new public endpoint requires a deliberate test/documentation change.
+- Added tenant model metadata tests for all 27 tenant-owned EF entities and fail-closed behavior when no tenant context is present.
+- Added `docs/security/endpoint-authorization-audit.md` with the reviewed public endpoint boundary, authorization layers and known remaining audit scope.
+- These checks cover controller metadata and global-filter presence; they do not prove all object-level, field-level, agent, raw-SQL, export, cache or background-job paths. The exhaustive matrix and adversarial tests remain open.
