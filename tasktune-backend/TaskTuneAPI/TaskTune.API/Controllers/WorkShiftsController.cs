@@ -263,8 +263,12 @@ public sealed class WorkShiftsController : BaseApiController
 
     private async Task<IActionResult> GetAssignments(int companyId, int userId)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var items = await (
+        var calendarSettings = await WorkCalendarSettingsStore.LoadAsync(_db, companyId);
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(calendarSettings.TimeZoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone));
+        var todayMask = AttendanceScheduleCalculator.GetWeekdayMask(today.DayOfWeek);
+
+        var rows = await (
             from assignment in _db.EmployeeShiftAssignments.AsNoTracking()
             join shift in _db.WorkShifts.AsNoTracking() on assignment.WorkShiftId equals shift.WorkShiftId
             where assignment.CompanyId == companyId &&
@@ -282,15 +286,31 @@ public sealed class WorkShiftsController : BaseApiController
                 shift.BreakMinutes,
                 shift.GraceMinutes,
                 assignment.DaysOfWeekMask,
-                ScheduledDays = Enumerable.Range(0, 7)
-                    .Where(day => (assignment.DaysOfWeekMask & (1 << day)) != 0)
-                    .ToList(),
                 assignment.EffectiveFrom,
-                assignment.EffectiveTo,
-                IsCurrent = assignment.EffectiveFrom <= today &&
-                            (!assignment.EffectiveTo.HasValue || assignment.EffectiveTo >= today)
+                assignment.EffectiveTo
             })
             .ToListAsync();
+
+        var items = rows.Select(assignment => new
+        {
+            assignment.EmployeeShiftAssignmentId,
+            assignment.UserId,
+            assignment.WorkShiftId,
+            assignment.ShiftName,
+            assignment.StartTime,
+            assignment.EndTime,
+            assignment.BreakMinutes,
+            assignment.GraceMinutes,
+            assignment.DaysOfWeekMask,
+            ScheduledDays = Enumerable.Range(0, 7)
+                .Where(day => (assignment.DaysOfWeekMask & (1 << day)) != 0)
+                .ToList(),
+            assignment.EffectiveFrom,
+            assignment.EffectiveTo,
+            IsCurrent = assignment.EffectiveFrom <= today &&
+                        (!assignment.EffectiveTo.HasValue || assignment.EffectiveTo >= today) &&
+                        (assignment.DaysOfWeekMask & todayMask) != 0
+        }).ToList();
 
         return Ok(new { userId, items });
     }
