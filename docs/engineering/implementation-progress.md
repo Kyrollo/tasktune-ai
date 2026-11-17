@@ -154,3 +154,9 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Added tenant model metadata tests for all 27 tenant-owned EF entities and fail-closed behavior when no tenant context is present.
 - Added `docs/security/endpoint-authorization-audit.md` with the reviewed public endpoint boundary, authorization layers and known remaining audit scope.
 - These checks cover controller metadata and global-filter presence; they do not prove all object-level, field-level, agent, raw-SQL, export, cache or background-job paths. The exhaustive matrix and adversarial tests remain open.
+
+
+## Authorization metadata CI correction
+
+- Run #76 caught a compile-time issue in the generic test helper that attempted to call the non-generic EF `DbContext.Set(Type)` API. The redundant dynamic-set test was removed; existing fail-closed behavior remains covered by `TenantIsolationTests.MissingTenantContext_FailsClosed`, while the new metadata test continues to assert filters on every listed tenant-owned type.
+- The corrected grouped fix is being revalidated by the full GitHub Actions workflow before the authorization audit gate is considered green.

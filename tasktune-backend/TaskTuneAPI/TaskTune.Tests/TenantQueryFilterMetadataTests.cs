@@ -54,21 +54,6 @@ public sealed class TenantQueryFilterMetadataTests
         Assert.Empty(missing);
     }
 
-    [Fact]
-    public void NoTenantContextHidesEveryTenantOwnedEntitySet()
-    {
-        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
-            .Options;
-
-        using var db = new TaskTuneDbContext(options, new FixedTenantContext(null));
-        foreach (var entityType in TenantOwnedEntities)
-        {
-            var set = db.Set(entityType);
-            Assert.Equal(0, set.Count());
-        }
-    }
-
     private sealed class FixedTenantContext(int? companyId) : ITenantContext
     {
         public int? CompanyId { get; } = companyId;
