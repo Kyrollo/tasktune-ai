@@ -182,3 +182,9 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes remains necessary; the stable RFC Message-ID is not a guarantee of exactly-once delivery.
 - Per-tenant delivery quotas, queue-age metrics/alerts, bounce processing and a staging SMTP verification remain open. The worker stays disabled by default.
+
+
+## Dead-letter replay CI correction
+
+- Run #79 confirmed the API and attachment utility compile, but the new test file imported the TaskTune domain namespace containing an entity named `Task`, making unqualified test method return types ambiguous with `System.Threading.Tasks.Task`.
+- Qualified the test method return types explicitly. No production code behavior or outbox schema changed in this correction; the complete workflow is being rerun.

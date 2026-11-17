@@ -8,7 +8,7 @@ namespace TaskTune.Tests;
 public sealed class CommunicationOutboxOperationsTests
 {
     [Fact]
-    public async Task Replay_ResetsDeadLetterAndAuditsReconciliation_WithoutChangingIdempotencyKey()
+    public async System.Threading.Tasks.Task Replay_ResetsDeadLetterAndAuditsReconciliation_WithoutChangingIdempotencyKey()
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
@@ -92,7 +92,7 @@ public sealed class CommunicationOutboxOperationsTests
     }
 
     [Fact]
-    public async Task Replay_IsTenantScopedAndRejectsNonApprovedParent()
+    public async System.Threading.Tasks.Task Replay_IsTenantScopedAndRejectsNonApprovedParent()
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
