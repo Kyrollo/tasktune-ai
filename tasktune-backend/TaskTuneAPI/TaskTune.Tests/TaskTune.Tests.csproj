@@ -17,6 +17,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../TaskTune.AttachmentMigration/TaskTune.AttachmentMigration.csproj" />
     <ProjectReference Include="..\TaskTune.Infrastructure\TaskTune.Infrastructure.csproj" />
     <ProjectReference Include="..\\TaskTune.API\\TaskTune.API.csproj" />
   </ItemGroup>

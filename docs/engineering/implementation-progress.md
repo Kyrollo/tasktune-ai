@@ -112,7 +112,7 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 
 1. Finish the exhaustive authorization matrix covering endpoints, raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Add negative tests for each privileged boundary and cross-tenant resource.
 2. Expand SQL Server schema and migration coverage: relationship-owned query filters, composite foreign keys, transactions, rowversion races, migration repeatability, forward compatibility and backup/restore rehearsal.
-3. Build a private legacy attachment migration utility with inventory, checksum validation, traversal/symlink protection, transactional metadata updates and a rollback manifest. Do not delete old files before verification and backup.
+3. Build and validate the private legacy attachment migration utility. The standalone tool now defaults to dry-run, validates flat legacy /Uploads paths, rejects traversal and reparse-point paths, checks file sizes and SHA-256, copies into the active private storage-key layout, updates metadata with a compare-and-set SQL transaction, and writes a prepared/committed JSONL rollback manifest. It never deletes legacy or private files. Deployment-specific dry-run, backup, apply and rollback rehearsal remain required.
 4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age alerts and an operator dead-letter/replay screen. Retry exhaustion is now persisted as DeadLetter; the dispatcher remains disabled by default.
 5. Complete outbound recipient policy, approval notifications, bounce handling and delivery audit. Production SMTP must remain disabled until end-to-end staging tests pass.
 6. Finish AI tool authorization, RAG document ACL enforcement, provider capability registry, usage budgets, egress allowlisting and managed secret-vault integration; verify prompt-injection and cross-tenant adversarial scenarios.
@@ -125,3 +125,13 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 ## Release posture
 
 Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatcher. The dispatcher is disabled by default and SMTP remains at-least-once. CI success alone is not production readiness. Do not enable outbound SMTP or load customer production data until the lease migration, provider behavior, tenant isolation, recipient policy, dependency, monitoring, backup and independent security gates are verified.
+
+
+## Completed — legacy attachment migration tooling foundation
+
+- Added standalone .NET 10 utility `tasktune-backend/TaskTuneAPI/TaskTune.AttachmentMigration` with the SQL connection and physical storage roots supplied only through environment variables.
+- Dry-run is the default; `--apply` is required for any file copy or metadata update. A SQL Server application lock prevents simultaneous invocations.
+- Only legacy `/Uploads/{singleFileName}` records are accepted. Traversal, nested paths, unsupported extensions and symbolic-link/reparse-point paths are rejected.
+- File copies are streamed and SHA-256 verified before a compare-and-set SQL transaction updates `TaskAttachments.FilePath`.
+- An append-only JSONL manifest records prepared and committed states. `--rollback` restores metadata only if the row still points at this tool's private key and the private copy verifies.
+- Neither apply nor rollback deletes files. Actual deployment roots, backups, real migration execution and post-migration application validation remain deployment-specific and have not been run from CI.
