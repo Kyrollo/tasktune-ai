@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.DTOs.Evaluations;
+using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;
@@ -12,8 +13,13 @@ namespace TaskTune.API.Controllers;
 public class EvaluationsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly ITaskService _taskService;
 
-    public EvaluationsController(TaskTuneDbContext db) => _db = db;
+    public EvaluationsController(TaskTuneDbContext db, ITaskService taskService)
+    {
+        _db = db;
+        _taskService = taskService;
+    }
 
     [HttpPost]
     [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
@@ -21,6 +27,10 @@ public class EvaluationsController : BaseApiController
     {
         var evaluatorId = GetCurrentUserId();
         if (evaluatorId == null) return Unauthorized();
+        if (!await _taskService.CanAccessTaskAsync(dto.TaskId, evaluatorId.Value)) return NotFound();
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == dto.TaskId);
+        if (task == null || task.AssignedTo != dto.EvaluatedUserId)
+            return BadRequest(new { message = "The evaluated employee must be the assignee of the selected task." });
 
         var eval = new Evaluation
         {
@@ -52,11 +62,19 @@ public class EvaluationsController : BaseApiController
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetEvaluation(int id)
     {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == null) return Unauthorized();
         var eval = await _db.Evaluations
             .Include(e => e.EvaluatedUser)
             .Include(e => e.Evaluator)
             .FirstOrDefaultAsync(e => e.EvaluationId == id);
         if (eval == null) return NotFound();
+        var role = GetCurrentRole();
+        if (role is not ("Admin" or "CEO" or "HR" or "Manager") &&
+            eval.EvaluatedUserId != currentUserId.Value &&
+            eval.EvaluatorId != currentUserId.Value &&
+            !await _taskService.CanAccessTaskAsync(eval.TaskId, currentUserId.Value))
+            return NotFound();
 
         return Ok(new
         {
@@ -82,6 +100,18 @@ public class EvaluationsController : BaseApiController
     [HttpGet("user/{userId:int}")]
     public async Task<IActionResult> GetUserEvaluations(int userId)
     {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == null) return Unauthorized();
+        var role = GetCurrentRole();
+        if (userId != currentUserId.Value && role is not ("Admin" or "CEO" or "HR" or "Manager"))
+        {
+            var currentUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == currentUserId.Value);
+            var targetUser = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (role != "Supervisor" || currentUser == null || targetUser == null ||
+                currentUser.DepartmentId != targetUser.DepartmentId)
+                return Forbid();
+        }
+
         var evals = await _db.Evaluations
             .Include(e => e.Task)
             .Where(e => e.EvaluatedUserId == userId)
@@ -162,7 +192,7 @@ public class EvaluationsController : BaseApiController
                 t.AssignedToNavigation.DepartmentId == reviewer.DepartmentId),
             "Supervisor" => tasksQuery.Where(t => t.CreatedBy == reviewerId || t.AssignedTo == reviewerId),
             "Manager" => tasksQuery.Where(t => t.Project.ManagerId == reviewerId || t.CreatedBy == reviewerId || t.Project.CompanyId == reviewer.CompanyId),
-            "CEO" or "Admin" => tasksQuery.Where(t => t.Project.CompanyId == reviewer.CompanyId),
+            "CEO" or "Admin" or "HR" => tasksQuery.Where(t => t.Project.CompanyId == reviewer.CompanyId),
             _ => tasksQuery.Where(t => t.AssignedTo == reviewerId || t.CreatedBy == reviewerId),
         };
 

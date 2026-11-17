@@ -23,6 +23,7 @@ public class NotificationsController : BaseApiController
         var items = await _db.Notifications
             .Where(n => n.UserId == userId.Value)
             .OrderByDescending(n => n.SentAt)
+            .Take(100)
             .Select(n => new
             {
                 n.NotificationId,

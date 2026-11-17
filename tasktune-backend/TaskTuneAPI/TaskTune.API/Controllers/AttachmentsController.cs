@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;
@@ -12,38 +13,65 @@ public class AttachmentsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly IWebHostEnvironment _env;
-    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+    private readonly ITaskService _taskService;
+    private const long MaxFileSize = 10 * 1024 * 1024;
 
-    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env)
+    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env, ITaskService taskService)
     {
         _db = db;
         _env = env;
+        _taskService = taskService;
+    }
+
+    private async Task<bool> CanAccessTaskAsync(int taskId)
+    {
+        var userId = GetCurrentUserId();
+        return userId.HasValue && await _taskService.CanAccessTaskAsync(taskId, userId.Value);
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAttachments(int taskId)
     {
-        var task = await _db.Tasks.FindAsync(taskId);
-        if (task == null) return NotFound();
-
-        var items = await _db.TaskAttachments
-            .Where(a => a.TaskId == taskId)
+        if (!await CanAccessTaskAsync(taskId)) return NotFound();
+        var items = await _db.TaskAttachments.Where(a => a.TaskId == taskId)
             .OrderByDescending(a => a.UploadedAt)
             .Select(a => new
             {
-                a.AttachmentId,
-                a.TaskId,
-                a.FileName,
-                a.FilePath,
-                a.FileSize,
-                a.MimeType,
-                a.UploadedAt,
-                a.UploadedBy,
-                UploaderName = a.UploadedByNavigation.FullName
-            })
-            .ToListAsync();
-
+                a.AttachmentId, a.TaskId, a.FileName, a.FileSize, a.MimeType,
+                a.UploadedAt, a.UploadedBy,
+                UploaderName = a.UploadedByNavigation.FullName,
+                DownloadUrl = Url.Action(nameof(DownloadAttachment), new { taskId, attachmentId = a.AttachmentId })
+            }).ToListAsync();
         return Ok(new { items });
+    }
+
+    [HttpGet("{attachmentId:int}")]
+    public async Task<IActionResult> DownloadAttachment(int taskId, int attachmentId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (!await _taskService.CanAccessTaskAsync(taskId, userId.Value)) return NotFound();
+
+        var attachment = await _db.TaskAttachments
+            .FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.TaskId == taskId);
+        if (attachment == null) return NotFound();
+
+        var storageRoot = GetPrivateUploadRoot();
+        var relativePath = (attachment.FilePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath) ||
+            relativePath.Split('/').Any(segment => segment is "" or "." or ".."))
+            return NotFound();
+
+        var fullPath = Path.GetFullPath(Path.Combine(storageRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        var rootPrefix = Path.GetFullPath(storageRoot) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!fullPath.StartsWith(rootPrefix, comparison) || !System.IO.File.Exists(fullPath))
+            return NotFound();
+
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 81920, useAsync: true);
+        return File(stream, "application/octet-stream", Path.GetFileName(attachment.FileName), enableRangeProcessing: true);
     }
 
     [HttpPost]
@@ -52,57 +80,61 @@ public class AttachmentsController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
+        if (!await _taskService.CanAccessTaskAsync(taskId, userId.Value)) return NotFound();
 
-        var task = await _db.Tasks.FindAsync(taskId);
-        if (task == null) return NotFound();
+        if (file == null || file.Length <= 0) return BadRequest(new { message = "No file provided." });
+        if (file.Length > MaxFileSize) return BadRequest(new { message = "File size exceeds 10 MB limit." });
+        var safeFileName = Path.GetFileName((file.FileName ?? string.Empty).Replace('\\', '/'));
+        if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName.Length > 255 || safeFileName.Any(char.IsControl))
+            return BadRequest(new { message = "Invalid file name." });
 
-        if (file == null || file.Length == 0)
-            return BadRequest(new { message = "No file provided." });
+        var uniqueName = $"{Guid.NewGuid():N}_{safeFileName}";
+        var storageKey = $"tasks/{taskId}/{uniqueName}";
+        var uploadDirectory = Path.Combine(GetPrivateUploadRoot(), "tasks", taskId.ToString());
+        Directory.CreateDirectory(uploadDirectory);
+        var fullPath = Path.Combine(uploadDirectory, uniqueName);
 
-        if (file.Length > MaxFileSize)
-            return BadRequest(new { message = "File size exceeds 10 MB limit." });
-
-        var uploadDir = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
-            "uploads", "tasks", taskId.ToString());
-        Directory.CreateDirectory(uploadDir);
-
-        var uniqueName = $"{Guid.NewGuid()}_{file.FileName}";
-        var filePath = Path.Combine(uploadDir, uniqueName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        try
         {
-            await file.CopyToAsync(stream);
+            await using var stream = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, bufferSize: 81920, FileOptions.Asynchronous);
+            await file.CopyToAsync(stream, HttpContext.RequestAborted);
         }
-
-        var relativePath = $"/uploads/tasks/{taskId}/{uniqueName}";
+        catch
+        {
+            if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
+            throw;
+        }
 
         var attachment = new TaskAttachment
         {
-            TaskId = taskId,
-            UploadedBy = userId.Value,
-            FileName = file.FileName,
-            FilePath = relativePath,
-            FileSize = (int)file.Length,
-            MimeType = file.ContentType ?? "application/octet-stream",
-            UploadedAt = DateTime.UtcNow
+            TaskId = taskId, UploadedBy = userId.Value, FileName = safeFileName,
+            FilePath = storageKey, FileSize = checked((int)file.Length),
+            MimeType = "application/octet-stream", UploadedAt = DateTime.UtcNow
         };
 
-        _db.TaskAttachments.Add(attachment);
-        await _db.SaveChangesAsync();
-
-        var user = await _db.Users.FindAsync(userId.Value);
-
-        return CreatedAtAction(nameof(GetAttachments), new { taskId }, new
+        try
         {
-            attachment.AttachmentId,
-            attachment.TaskId,
-            attachment.FileName,
-            attachment.FilePath,
-            attachment.FileSize,
-            attachment.MimeType,
-            attachment.UploadedAt,
-            attachment.UploadedBy,
-            UploaderName = user?.FullName
-        });
+            _db.TaskAttachments.Add(attachment);
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
+            throw;
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
+        return CreatedAtAction(nameof(DownloadAttachment),
+            new { taskId, attachmentId = attachment.AttachmentId },
+            new
+            {
+                attachment.AttachmentId, attachment.TaskId, attachment.FileName,
+                attachment.FileSize, attachment.UploadedAt, attachment.UploadedBy,
+                UploaderName = user?.FullName
+            });
     }
+
+    private string GetPrivateUploadRoot() =>
+        Path.Combine(_env.ContentRootPath, "App_Data", "tasktune-private", "uploads");
 }

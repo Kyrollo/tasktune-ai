@@ -75,6 +75,12 @@ public class PositionsController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return Unauthorized();
 
+        if (string.IsNullOrWhiteSpace(dto.PositionTitle) || dto.PositionTitle.Length > 150 ||
+            !await _db.Departments.AnyAsync(d => d.DepartmentId == dto.DepartmentId && d.CompanyId == companyId.Value) ||
+            (dto.ReportsToPositionId.HasValue && !await _db.Positions.AnyAsync(p =>
+                p.PositionId == dto.ReportsToPositionId.Value && p.CompanyId == companyId.Value)))
+            return BadRequest(new { message = "Position title, department, and reporting position must be valid within your company." });
+
         var pos = new Position
         {
             CompanyId = companyId.Value,
@@ -98,6 +104,7 @@ public class PositionsController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> UpdatePosition(int id, [FromBody] UpdatePositionDto dto)
     {
         var companyId = GetCurrentCompanyId();
@@ -106,6 +113,11 @@ public class PositionsController : BaseApiController
         var pos = await _db.Positions
             .FirstOrDefaultAsync(p => p.PositionId == id && p.CompanyId == companyId.Value);
         if (pos == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(dto.PositionTitle) || dto.PositionTitle.Length > 150 ||
+            !await _db.Departments.AnyAsync(d => d.DepartmentId == dto.DepartmentId && d.CompanyId == companyId.Value) ||
+            (dto.ReportsToPositionId.HasValue && !await _db.Positions.AnyAsync(p =>
+                p.PositionId == dto.ReportsToPositionId.Value && p.CompanyId == companyId.Value && p.PositionId != id)))
+            return BadRequest(new { message = "Position title, department, and reporting position must be valid within your company." });
 
         pos.DepartmentId = dto.DepartmentId;
         pos.PositionTitle = dto.PositionTitle;

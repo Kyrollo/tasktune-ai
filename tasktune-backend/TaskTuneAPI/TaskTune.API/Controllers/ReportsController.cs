@@ -17,16 +17,23 @@ public class ReportsController : BaseApiController
     public ReportsController(TaskTuneDbContext db) => _db = db;
 
     [HttpGet]
+    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
     public async Task<IActionResult> GetReports(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
         var query = _db.Reports
             .Include(r => r.GeneratedByNavigation)
             .Where(r => r.CompanyId == companyId.Value);
+
+        if (GetCurrentRole() is "Supervisor" or "Manager")
+            query = query.Where(r => r.GeneratedBy == userId.Value);
 
         var total = await query.CountAsync();
         var rawItems = await query
@@ -69,22 +76,26 @@ public class ReportsController : BaseApiController
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
     public async Task<IActionResult> GetReport(int id)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
 
         var report = await _db.Reports
             .Include(r => r.GeneratedByNavigation)
             .FirstOrDefaultAsync(r => r.ReportId == id && r.CompanyId == companyId.Value);
 
-        if (report == null) return NotFound();
+        if (report == null ||
+            (GetCurrentRole() is "Supervisor" or "Manager" && report.GeneratedBy != userId.Value))
+            return NotFound();
 
         return Ok(BuildReportResponse(report));
     }
 
     [HttpPost("generate")]
-    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
+    [Authorize(Roles = "CEO,HR,Admin")]
     public async Task<IActionResult> GenerateReport([FromBody] GenerateReportRequest request)
     {
         var userId = GetCurrentUserId();
@@ -149,7 +160,7 @@ public class ReportsController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
+    [Authorize(Roles = "CEO,HR,Admin")]
     public async Task<IActionResult> CreateReport([FromBody] CreateReportRequest request)
     {
         var userId = GetCurrentUserId();
@@ -265,7 +276,8 @@ public class ReportsController : BaseApiController
         if (userId == null) return Unauthorized();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
-        var user = await _db.Users.FindAsync(userId.Value);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
+        if (user == null) return Unauthorized();
         var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
         var agentConfig = aiConfig.GetAgent("report_generation");
         if (!aiConfig.Enabled || !aiConfig.Features.ReportGeneration || !agentConfig.Enabled)
@@ -283,6 +295,16 @@ public class ReportsController : BaseApiController
                 .ThenInclude(u => u.Department)
             .Where(t => t.Project.CompanyId == companyId.Value)
             .Where(t => t.StartDate <= endDate && t.DueDate >= startDate);
+
+        if (user.Role is 1 or 2)
+        {
+            tasksQuery = user.DepartmentId.HasValue
+                ? tasksQuery.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
+                    t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value)
+                : tasksQuery.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
+        }
 
         if (!selectedDepartment.Equals("All Departments", StringComparison.OrdinalIgnoreCase))
         {

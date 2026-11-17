@@ -78,18 +78,35 @@ public class DashboardsController : BaseApiController
     [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
     public async Task<IActionResult> SupervisorDashboard()
     {
+        var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (userId == null || companyId == null) return Unauthorized();
 
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
+        if (user == null) return Unauthorized();
+
+        var taskScope = _db.Tasks.Where(t => t.Project.CompanyId == companyId.Value);
+        if (user.Role is 1 or 2)
+        {
+            taskScope = user.DepartmentId.HasValue
+                ? taskScope.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
+                    t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value)
+                : taskScope.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
+        }
+
+        var scopedTaskIds = taskScope.Select(t => t.TaskId);
         return Ok(new
         {
-            TotalTasks = await _db.Tasks.CountAsync(t => t.Project.CompanyId == companyId.Value),
-            PendingReviews = await _db.Evaluations.CountAsync(e => e.Status == 0 && e.Task.Project.CompanyId == companyId.Value)
+            TotalTasks = await taskScope.CountAsync(),
+            PendingReviews = await _db.Evaluations.CountAsync(e =>
+                e.Status == 0 && scopedTaskIds.Contains(e.TaskId))
         });
     }
 
     [HttpGet("executive")]
-    [Authorize(Roles = "Manager,CEO,Admin")]
+    [Authorize(Roles = "CEO,Admin")]
     public async Task<IActionResult> ExecutiveDashboard()
     {
         var companyId = GetCurrentCompanyId();

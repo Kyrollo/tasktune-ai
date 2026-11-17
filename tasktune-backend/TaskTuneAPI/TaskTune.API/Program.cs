@@ -10,6 +10,7 @@ using TaskTune.API.Middleware;
 using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
 using TaskTune.Infrastructure.Services;
+using TaskTune.API.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +50,9 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.File("logs/tasktune-.txt", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 builder.Host.UseSerilog();
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
 
 builder.Services.AddDbContext<TaskTuneDbContext>(options =>
     options.UseSqlServer(connectionString));
@@ -131,6 +135,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("ReactFrontend");
 app.UseAuthentication();
+app.UseMiddleware<TenantMembershipMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

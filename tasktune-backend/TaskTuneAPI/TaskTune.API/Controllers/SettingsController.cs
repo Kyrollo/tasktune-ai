@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;
@@ -38,6 +39,19 @@ public class SettingsController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
+        if (dto == null || string.IsNullOrWhiteSpace(dto.SettingsJson) || dto.SettingsJson.Length > 20000)
+            return BadRequest(new { message = "Settings must be a JSON object no larger than 20 KB." });
+
+        try
+        {
+            using var document = JsonDocument.Parse(dto.SettingsJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return BadRequest(new { message = "Settings must be a JSON object no larger than 20 KB." });
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new { message = "Settings must contain valid JSON." });
+        }
 
         var setting = await _db.UserSettings
             .FirstOrDefaultAsync(s => s.UserId == userId.Value);

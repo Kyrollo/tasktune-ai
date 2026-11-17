@@ -35,7 +35,7 @@ public class AuthService : IAuthService
 
     public async Task<TokenResponseDto?> LoginAsync(LoginRequestDto request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(
+        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(
             u => u.Email == request.Email && u.IsActive);
 
         if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash))
@@ -87,7 +87,7 @@ public class AuthService : IAuthService
         }
 
         var refreshTokenHash = HashRefreshToken(refreshToken);
-        var user = await _context.Users.FirstOrDefaultAsync(
+        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(
             u => u.RefreshToken == refreshTokenHash
               && u.RefreshTokenExpiry > DateTime.UtcNow
               && u.IsActive);
@@ -119,7 +119,7 @@ public class AuthService : IAuthService
 
     public async Task<bool> LogoutAsync(int userId)
     {
-        var user = await _context.Users.FindAsync(userId);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
         if (user == null)
         {
             return false;
