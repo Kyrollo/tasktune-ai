@@ -10,6 +10,7 @@ using TaskTune.Application.DTOs;
 using TaskTune.Application.DTOs.Auth;
 using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Models;
+using Task = System.Threading.Tasks.Task;
 
 namespace TaskTune.Infrastructure.Services;
 

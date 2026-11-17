@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.DTOs.Users;
 using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
+using TaskTune.API.Support;
 
 namespace TaskTune.API.Controllers;
 
@@ -13,7 +14,13 @@ namespace TaskTune.API.Controllers;
 public class UsersController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
-    public UsersController(TaskTuneDbContext db) => _db = db;
+    private readonly AccountSecurityWorkflowService _accountWorkflow;
+
+    public UsersController(TaskTuneDbContext db, AccountSecurityWorkflowService accountWorkflow)
+    {
+        _db = db;
+        _accountWorkflow = accountWorkflow;
+    }
 
     [HttpGet]
     [Authorize(Roles = "Admin,CEO,HR")]
@@ -169,6 +176,40 @@ public class UsersController : BaseApiController
         return NoContent();
     }
 
+
+    [HttpPost("invitations")]
+    [Authorize(Roles = "Admin,CEO,HR")]
+    public async Task<IActionResult> CreateInvitation(
+        [FromBody] CreateInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actorId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (actorId == null || companyId == null) return Unauthorized();
+
+        var actorRole = GetCurrentRole();
+        if (actorRole.Equals("HR", StringComparison.OrdinalIgnoreCase) && request.Role > 2)
+            return Forbid();
+        if (!actorRole.Equals("Admin", StringComparison.OrdinalIgnoreCase) &&
+            request.Role == 5)
+            return Forbid();
+
+        var result = await _accountWorkflow.CreateInvitationAsync(
+            companyId.Value,
+            actorId.Value,
+            request.Email,
+            request.Role,
+            request.DepartmentId,
+            request.PositionId,
+            cancellationToken);
+
+        if (!result.Success) return BadRequest(new { message = result.Error });
+        await AuditLogWriter.WriteAsync(_db, HttpContext, actorId,
+            action: "INVITE", resourceType: "AccountInvitation",
+            after: new { email = request.Email.Trim(), role = request.Role, request.DepartmentId, request.PositionId });
+        return Accepted(new { message = "Invitation email sent. The link is valid for 48 hours and can only be used once." });
+    }
+
     private async Task<bool> ReferencesBelongToTenantAsync(int companyId, int? departmentId, int? positionId)
     {
         if (departmentId.HasValue &&
@@ -184,3 +225,5 @@ public class UsersController : BaseApiController
         return true;
     }
 }
+
+public record CreateInvitationRequest(string Email, byte Role, int? DepartmentId, int? PositionId);
