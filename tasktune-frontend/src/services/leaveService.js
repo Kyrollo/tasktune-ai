@@ -16,5 +16,7 @@ export const leaveService = {
   decideRequest: (id, data) => api.post(`/leave/requests/${id}/decision`, data),
   cancelRequest: (id, reason) => api.post(`/leave/requests/${id}/cancel`, { reason }),
   getHolidays: (year) => api.get(`/leave/holidays?year=${year}`),
+  getCalendarSettings: () => api.get('/leave/calendar-settings'),
+  updateCalendarSettings: (weekendDays) => api.put('/leave/calendar-settings', { weekendDays }),
   createHoliday: (data) => api.post('/leave/holidays', data),
 };
