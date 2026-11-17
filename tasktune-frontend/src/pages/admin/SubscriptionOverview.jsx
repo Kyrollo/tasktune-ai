@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { createElement, useCallback, useEffect, useState } from 'react';
 import AppLayout from '../../layouts/AppLayout';
 import { Card, Badge, Button } from '../../components/ui';
 import { subscriptionService } from '../../services/subscriptionService';
@@ -21,6 +21,7 @@ const quotaLabel = (used, limit, suffix = '') => {
 
 function Meter({ title, detail, used, limit, icon: Icon, format = (v) => String(v) }) {
   const percentage = limit == null || limit <= 0 ? 0 : Math.min(100, Math.max(0, (Number(used || 0) / Number(limit)) * 100));
+  const iconElement = Icon ? createElement(Icon, { size: 18, className: 'text-orange' }) : null;
   return (
     <div className="p-4 rounded-xl border border-border bg-bg">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -28,7 +29,7 @@ function Meter({ title, detail, used, limit, icon: Icon, format = (v) => String(
           <p className="text-sm font-medium text-text-primary">{title}</p>
           <p className="text-xs text-text-muted mt-1">{detail}</p>
         </div>
-        <Icon size={18} className="text-orange" />
+        {iconElement}
       </div>
       <p className="text-xl font-semibold text-text-primary">{format(used)} <span className="text-sm font-normal text-text-muted">/ {limit == null ? 'Unlimited' : format(limit)}</span></p>
       {limit != null && (
