@@ -77,7 +77,7 @@ BEGIN
         MetadataJson NVARCHAR(4000) NULL,
         OccurredAt DATETIME2(7) NOT NULL CONSTRAINT DF_TenantUsageEvents_OccurredAt DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_TenantUsageEvents_Companies FOREIGN KEY (CompanyId) REFERENCES dbo.Companies(CompanyId),
-        CONSTRAINT CK_TenantUsageEvents_Quantity CHECK (Quantity > 0),
+        CONSTRAINT CK_TenantUsageEvents_Quantity CHECK ((MeterKey = N'storage_bytes' AND Quantity <> 0) OR (MeterKey <> N'storage_bytes' AND Quantity > 0)),
         CONSTRAINT UQ_TenantUsageEvents_Idempotency UNIQUE (CompanyId, IdempotencyKey)
     );
     CREATE INDEX IX_TenantUsageEvents_Meter ON dbo.TenantUsageEvents(CompanyId, MeterKey, OccurredAt);
