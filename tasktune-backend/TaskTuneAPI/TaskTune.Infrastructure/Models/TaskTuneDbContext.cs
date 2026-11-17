@@ -8,10 +8,10 @@ namespace TaskTune.Infrastructure.Models;
 
 public partial class TaskTuneDbContext : DbContext
 {
-    private readonly ITenantContext? _tenantContext;
+    private readonly ITenantContext _tenantContext;
     public int? CurrentTenantId => _tenantContext?.CompanyId;
 
-    public TaskTuneDbContext(DbContextOptions<TaskTuneDbContext> options, ITenantContext? tenantContext = null)
+    public TaskTuneDbContext(DbContextOptions<TaskTuneDbContext> options, ITenantContext tenantContext = null)
         : base(options)
     {
         _tenantContext = tenantContext;
