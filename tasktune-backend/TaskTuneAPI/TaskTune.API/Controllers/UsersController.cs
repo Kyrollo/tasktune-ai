@@ -13,8 +13,13 @@ namespace TaskTune.API.Controllers;
 public class UsersController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly TenantEntitlementService _entitlements;
 
-    public UsersController(TaskTuneDbContext db) => _db = db;
+    public UsersController(TaskTuneDbContext db, TenantEntitlementService entitlements)
+    {
+        _db = db;
+        _entitlements = entitlements;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 25)
@@ -167,6 +172,16 @@ public class UsersController : BaseApiController
             return BadRequest(new { message = "Password must be at least 12 characters." });
         if (dto.Role > 4)
             return BadRequest(new { message = "Tenant administrators cannot create platform-admin accounts." });
+
+        try
+        {
+            await _entitlements.EnsureModuleEnabledAsync(companyId.Value, "core_hr");
+            await _entitlements.EnsureCanAddEmployeeAsync(companyId.Value);
+        }
+        catch (TenantEntitlementException ex)
+        {
+            return StatusCode(ex.StatusCode, new { message = ex.Message, traceId = HttpContext.TraceIdentifier });
+        }
 
         var email = dto.Email.Trim().ToLowerInvariant();
         if (await _db.Users.AnyAsync(u => u.Email == email))
