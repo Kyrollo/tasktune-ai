@@ -58,7 +58,7 @@ This record tracks implementation against the product and engineering plan. It s
 5. Implement password reset with expiring, single-use, hashed tokens and rate limiting.
 6. Add refresh-token session-family tracking and reuse detection, device/session revocation and account recovery hardening.
 7. Complete the communication approval workflow, authorized-recipient policy, delivery outbox/idempotency and provider credential isolation before re-enabling outbound SMTP.
-8. Audit all `IgnoreQueryFilters()` use, raw SQL and cross-service data paths. Verify all AI tools and report agents receive only authorized, tenant-scoped inputs; harden service-to-service authentication and remove secrets from agent payloads.
+8. Audit all `IgnoreQueryFilters()` use, raw SQL and cross-service data paths. Verify all AI tools and report agents receive only authorized, tenant-scoped inputs. Provider keys are no longer written into AI action audit records, but are still sent to internal agent endpoints in request payloads; add private authenticated service-to-service transport and secret references before production.
 9. Replace development-only CORS origins with a deployment-specific allowlist; harden agent-to-API network authentication and API key management.
 10. Triage the 19 npm dependency advisories (1 low, 4 moderate, 14 high), complete full dependency/license ownership review, secret rotation (previously committed secrets remain in Git history), telemetry, backups/restore drills, and independent security review.
 
