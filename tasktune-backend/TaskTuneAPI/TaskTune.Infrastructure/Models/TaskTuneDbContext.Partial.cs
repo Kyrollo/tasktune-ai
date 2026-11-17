@@ -14,6 +14,9 @@ public partial class TaskTuneDbContext
     public virtual DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
     public virtual DbSet<CompanySubscription> CompanySubscriptions { get; set; }
     public virtual DbSet<TenantUsageEvent> TenantUsageEvents { get; set; }
+    public virtual DbSet<WorkShift> WorkShifts { get; set; }
+    public virtual DbSet<EmployeeShiftAssignment> EmployeeShiftAssignments { get; set; }
+    public virtual DbSet<AttendanceRecord> AttendanceRecords { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -197,6 +200,57 @@ public partial class TaskTuneDbContext
             entity.Property(e => e.OccurredAt).HasDefaultValueSql("(SYSUTCDATETIME())");
             entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_TenantUsageEvents_Companies");
+        });
+
+        modelBuilder.Entity<WorkShift>(entity =>
+        {
+            entity.ToTable("WorkShifts");
+            entity.HasKey(e => e.WorkShiftId);
+            entity.HasIndex(e => new { e.CompanyId, e.Name }, "UQ_WorkShifts_Company_Name").IsUnique();
+            entity.Property(e => e.Name).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.StartTime).HasColumnType("time(0)");
+            entity.Property(e => e.EndTime).HasColumnType("time(0)");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_WorkShifts_Companies");
+        });
+
+        modelBuilder.Entity<EmployeeShiftAssignment>(entity =>
+        {
+            entity.ToTable("EmployeeShiftAssignments");
+            entity.HasKey(e => e.EmployeeShiftAssignmentId);
+            entity.HasIndex(e => new { e.CompanyId, e.UserId, e.EffectiveFrom, e.EffectiveTo }, "IX_EmployeeShiftAssignments_User_Dates");
+            entity.HasIndex(e => new { e.CompanyId, e.WorkShiftId, e.EffectiveTo }, "IX_EmployeeShiftAssignments_Shift");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EmployeeShiftAssignments_Companies");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EmployeeShiftAssignments_Users");
+            entity.HasOne<WorkShift>().WithMany().HasForeignKey(e => e.WorkShiftId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EmployeeShiftAssignments_Shifts");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.CreatedBy)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EmployeeShiftAssignments_CreatedBy");
+        });
+
+        modelBuilder.Entity<AttendanceRecord>(entity =>
+        {
+            entity.ToTable("AttendanceRecords");
+            entity.HasKey(e => e.AttendanceRecordId);
+            entity.HasIndex(e => new { e.CompanyId, e.UserId, e.WorkDate }, "UQ_AttendanceRecords_Employee_Day").IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.WorkDate, e.Status }, "IX_AttendanceRecords_Day_Status");
+            entity.Property(e => e.Status).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.CaptureSource).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_AttendanceRecords_Companies");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_AttendanceRecords_Users");
+            entity.HasOne<WorkShift>().WithMany().HasForeignKey(e => e.WorkShiftId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_AttendanceRecords_Shifts");
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.AdjustedBy)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_AttendanceRecords_AdjustedBy");
         });
     }
 }
