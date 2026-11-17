@@ -223,7 +223,7 @@ public class ChatbotController : BaseApiController
     private async Task<ChatExecutionResult> BuildAssistantReplyAsync(User user, ChatThread thread, string message)
     {
         var scope = await BuildScopeAsync(user, thread);
-        var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId);
+        var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId, _configuration);
         var agentConfig = config.GetAgent("chat_assistant");
 
         if (config.Enabled && config.Features.ChatAssistant && agentConfig.Enabled)

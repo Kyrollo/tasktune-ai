@@ -98,7 +98,7 @@ public class CommunicationsController : BaseApiController
     {
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("email_assistant");
 
         var users = await _db.Users

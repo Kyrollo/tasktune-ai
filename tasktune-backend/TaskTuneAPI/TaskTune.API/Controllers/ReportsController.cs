@@ -284,7 +284,7 @@ public class ReportsController : BaseApiController
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
         if (user == null) return Unauthorized();
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("report_generation");
         if (!aiConfig.Enabled || !aiConfig.Features.ReportGeneration || !agentConfig.Enabled)
         {

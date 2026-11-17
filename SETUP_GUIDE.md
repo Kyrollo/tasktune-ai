@@ -44,6 +44,17 @@ dotnet user-secrets set "JwtSettings:SecretKey" $jwtKey
 
 The API requires a JWT key of at least 32 UTF-8 bytes and a configured SQL connection string. These values can also be supplied through the environment variables ConnectionStrings__DefaultConnection and JwtSettings__SecretKey.
 
+Generate a dedicated 32-byte encryption key for tenant-configured AI provider keys. It encrypts provider secrets before they are stored in the company settings JSON; keep the key stable and back it up securely because losing or rotating it without re-encrypting stored values makes those values unreadable.
+
+~~~powershell
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$aiKey = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+dotnet user-secrets set "AISecrets:EncryptionKey" $aiKey
+~~~
+
 Generate a separate private API-to-agent key and store it outside source control:
 
 ~~~powershell
