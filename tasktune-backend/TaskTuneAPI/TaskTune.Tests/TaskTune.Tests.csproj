@@ -18,5 +18,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\TaskTune.Infrastructure\TaskTune.Infrastructure.csproj" />
+    <ProjectReference Include="..\\TaskTune.API\\TaskTune.API.csproj" />
   </ItemGroup>
 </Project>
