@@ -85,7 +85,7 @@ BEGIN
         CONSTRAINT FK_AttendanceRecords_AdjustedBy FOREIGN KEY (AdjustedBy) REFERENCES dbo.Users(UserId),
         CONSTRAINT UQ_AttendanceRecords_Employee_Day UNIQUE (CompanyId, UserId, WorkDate),
         CONSTRAINT CK_AttendanceRecords_Status CHECK ([Status] IN (N'scheduled', N'present', N'late', N'early_leave', N'late_and_early', N'missed', N'on_leave', N'holiday')),
-        CONSTRAINT CK_AttendanceRecords_Source CHECK (CaptureSource IN (N'web', N'mobile', N'manual', N'import')),
+        CONSTRAINT CK_AttendanceRecords_Source CHECK (CaptureSource IN (N'web', N'mobile', N'manual', N'import', N'system')),
         CONSTRAINT CK_AttendanceRecords_Metrics CHECK (LateMinutes >= 0 AND EarlyLeaveMinutes >= 0 AND WorkedMinutes >= 0 AND BreakMinutes >= 0),
         CONSTRAINT CK_AttendanceRecords_Times CHECK (
             ScheduledEndUtc > ScheduledStartUtc AND
