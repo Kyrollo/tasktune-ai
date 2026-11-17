@@ -9,8 +9,22 @@ permissions:
 
 jobs:
   backend:
-    name: Backend build and auth regression tests
+    name: Backend build and regression tests
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: "TaskTune_Test#2026_SQL"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'TaskTune_Test#2026_SQL' -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 20s
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -20,7 +34,9 @@ jobs:
         run: dotnet restore tasktune-backend/TaskTuneAPI/TaskTune.API/TaskTune.API.csproj
       - name: Build API
         run: dotnet build tasktune-backend/TaskTuneAPI/TaskTune.API/TaskTune.API.csproj --configuration Release --no-restore
-      - name: Run authentication regression tests
+      - name: Run authentication and tenant regression tests
+        env:
+          TASKTUNE_SQLSERVER_TEST_CONNECTION: "Server=localhost,1433;Initial Catalog=master;User ID=sa;Password=TaskTune_Test#2026_SQL;Encrypt=True;TrustServerCertificate=True"
         run: dotnet test tasktune-backend/TaskTuneAPI/TaskTune.Tests/TaskTune.Tests.csproj --configuration Release --logger "console;verbosity=normal"
 
   frontend:

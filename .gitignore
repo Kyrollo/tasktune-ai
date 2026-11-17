@@ -13,12 +13,24 @@ venv/
 # Node
 node_modules/
 dist/
+.vite/
+**/.vite/
 
 # .NET
 bin/
 obj/
+.dotnet/
+**/.dotnet/
 *.user
 *.suo
+
+# Runtime data, private uploads, and database files
+App_Data/
+**/App_Data/
+*.db
+*.bak
+*.mdf
+*.ldf
 
 # IDE
 .vs/

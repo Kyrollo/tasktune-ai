@@ -45,14 +45,16 @@ This record tracks implementation against the product and engineering plan. It s
 
 - Phase 1 GitHub Actions run on `0874d70c332b0e4220bca36f2a099ba9a9d42785`: all three workflow jobs passed.
 - Latest phase 2 GitHub Actions run on `0e2292be0c032042e5167ea0ca258e9c13a19408` (run [#44100782429](https://github.com/Kyrollo/tasktune-ai/actions/runs/44100782429)): backend build and regression tests passed; frontend lint and production build passed; Python agent syntax validation passed.
-- Tenant-isolation and task-scope tests use EF Core InMemory. They are regression tests, not a substitute for SQL Server-backed integration tests, migration rehearsal, penetration testing, or production security review.
+- Tenant-isolation and task-scope tests include EF Core InMemory regression coverage and a real SQL Server integration test in CI. The SQL Server test verifies that company and user query filters are translated and enforced by the SQL Server provider. It does not yet prove every relationship filter, deployment migration, rollback, concurrency path, or production data integrity.
+- Phase 3 run [#44129659808](https://github.com/Kyrollo/tasktune-ai/actions/runs/44129659808) on the phase 3 tree: all three jobs passed, including 5 backend tests with the SQL Server integration test.
+- Removed tracked local `.dotnet` and Vite cache artifacts and added ignore rules.
 - Local .NET execution was not available in the implementation environment; GitHub Actions is the build/test evidence.
 - Frontend install reported 19 dependency advisories (1 low, 4 moderate, 14 high). No blind `npm audit fix` was applied; affected packages still need targeted triage and upgrades.
 
 ## Remaining release blockers and next implementation phases
 
 1. Complete a full endpoint, SQL query, export, background-job and agent-tool authorization matrix. Phase 2 covered core people/work resources but should not be treated as proof that every route and downstream data path is fully scoped.
-2. Add SQL Server integration tests for tenant filtering, constraints and transaction behaviour; implement reviewed schema migrations and rehearse rollback.
+2. Expand SQL Server integration coverage to relationship-owned filters, foreign-key constraints, transactions and concurrency; add reviewed, versioned schema migrations and rehearse both forward and rollback paths.
 3. Migrate legacy attachment rows/files from any previous public `wwwroot/uploads` location into private storage, verify metadata/path integrity, and confirm no public static copies remain.
 4. Implement tenant-scoped invitations, email verification and secure tenant provisioning before re-enabling registration.
 5. Implement password reset with expiring, single-use, hashed tokens and rate limiting.
