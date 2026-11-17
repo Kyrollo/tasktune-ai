@@ -17,11 +17,16 @@ public class TasksController : BaseApiController
 {
     private readonly ITaskService _taskService;
     private readonly TaskTuneDbContext _db;
+    private readonly TenantEntitlementService _entitlements;
 
-    public TasksController(ITaskService taskService, TaskTuneDbContext db)
+    public TasksController(
+        ITaskService taskService,
+        TaskTuneDbContext db,
+        TenantEntitlementService entitlements)
     {
         _taskService = taskService;
         _db = db;
+        _entitlements = entitlements;
     }
 
     [HttpGet]
@@ -148,6 +153,7 @@ public class TasksController : BaseApiController
     }
 
     [HttpPost("{id:int}/guidance/generate")]
+    [RequireModule("ai_assistant")]
     public async Task<IActionResult> GenerateGuidance(int id)
     {
         var userId = GetCurrentUserId();
@@ -163,6 +169,9 @@ public class TasksController : BaseApiController
         {
             return StatusCode(503, new { message = "Task guidance is disabled in AI Control Panel." });
         }
+
+        var quotaError = await ConsumeAiQuotaAsync(companyId.Value, "task_guidance", id.ToString());
+        if (quotaError != null) return quotaError;
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
             var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
@@ -243,6 +252,7 @@ public class TasksController : BaseApiController
     }
 
     [HttpPost("ai-recommendation")]
+    [RequireModule("ai_assistant")]
     [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
     public async Task<IActionResult> GenerateTaskRecommendation([FromBody] TaskRecommendationRequest request)
     {
@@ -256,6 +266,9 @@ public class TasksController : BaseApiController
         {
             return StatusCode(503, new { message = "Task guidance is disabled in AI Control Panel." });
         }
+
+        var quotaError = await ConsumeAiQuotaAsync(companyId.Value, "task_recommendation", userId?.ToString() ?? "unknown");
+        if (quotaError != null) return quotaError;
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
             var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
@@ -317,6 +330,7 @@ public class TasksController : BaseApiController
     }
 
     [HttpPost("{id:int}/progress/ai-analyze")]
+    [RequireModule("ai_assistant")]
     public async Task<IActionResult> AnalyzeProgress(int id, [FromBody] AnalyzeProgressRequest? request)
     {
         var userId = GetCurrentUserId();
@@ -331,6 +345,9 @@ public class TasksController : BaseApiController
         {
             return StatusCode(503, new { message = "Progress tracking is disabled in AI Control Panel." });
         }
+
+        var quotaError = await ConsumeAiQuotaAsync(companyId.Value, "progress_analysis", id.ToString());
+        if (quotaError != null) return quotaError;
 
         // Build progress updates list from history
         var progressUpdates = task.TaskProgresses
@@ -447,6 +464,35 @@ public class TasksController : BaseApiController
         return Ok(ParseOutput(latest) ?? new { });
     }
 
+
+
+    private async Task<IActionResult?> ConsumeAiQuotaAsync(int companyId, string operation, string resourceId)
+    {
+        var providedKey = Request.Headers["Idempotency-Key"].ToString();
+        var idempotencyKey = string.IsNullOrWhiteSpace(providedKey)
+            ? $"ai:{operation}:{Guid.NewGuid():N}"
+            : $"ai:{operation}:{providedKey}";
+        if (idempotencyKey.Length > 160)
+            return BadRequest(new { message = "Idempotency-Key must not exceed 144 characters." });
+
+        try
+        {
+            await _entitlements.ConsumeAiRequestAsync(
+                companyId,
+                idempotencyKey,
+                "TaskAI",
+                resourceId);
+            return null;
+        }
+        catch (TenantEntitlementException ex)
+        {
+            return StatusCode(ex.StatusCode, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+    }
 
     private async Task<TaskTune.Infrastructure.Models.Task?> FindAccessibleTaskAsync(int id)
     {
