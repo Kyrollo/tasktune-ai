@@ -1,7 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
-using TaskTune.Infrastructure.Models;
+
+using TaskTuneDbContext = TaskTune.Infrastructure.Models.TaskTuneDbContext;
+using CompanySubscription = TaskTune.Infrastructure.Models.CompanySubscription;
+using SubscriptionPlan = TaskTune.Infrastructure.Models.SubscriptionPlan;
+using TenantUsageEvent = TaskTune.Infrastructure.Models.TenantUsageEvent;
 
 namespace TaskTune.API.Support;
 
