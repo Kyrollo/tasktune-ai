@@ -1,34 +1,35 @@
-# ── Secrets ──
-.env
-*.env.local
+# Secrets and local configuration
+.env*
+!.env.example
+appsettings.Local.json
+appsettings.*.local.json
 
-# ── Python ──
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .venv/
 venv/
 
-# ── Node ──
+# Node
 node_modules/
 dist/
 
-# ── .NET ──
+# .NET
 bin/
 obj/
 *.user
 *.suo
 
-# ── IDE ──
+# IDE
 .vs/
 .vscode/
 .idea/
 
-# ── Logs ──
+# Logs
 logs/
 *.log
 
-# ── Temp / OS ──
+# Temp / OS
 .DS_Store
 Thumbs.db
 git_status.txt

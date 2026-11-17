@@ -355,6 +355,15 @@ export default function Reports() {
               <div>
                 <h3 className="text-lg font-semibold text-text-primary">Generate AI Report</h3>
                 <p className="text-xs text-text-muted">Select report type, dates, and department to generate a tailored AI report.</p>
+                <div className="mt-1 flex items-center gap-2 text-xs text-text-muted" role="status" aria-live="polite">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor: agentOnline === null ? '#9CA3AF' : agentOnline ? '#10B981' : '#EF4444',
+                    }}
+                  />
+                  {agentOnline === null ? 'Checking AI agent...' : agentOnline ? 'AI agent online' : 'AI agent unavailable'}
+                </div>
               </div>
             </div>
 

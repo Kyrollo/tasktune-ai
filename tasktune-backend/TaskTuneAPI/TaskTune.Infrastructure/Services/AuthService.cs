@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using TaskTune.Application.DTOs;
 using TaskTune.Application.DTOs.Auth;
@@ -34,172 +35,158 @@ public class AuthService : IAuthService
 
     public async Task<TokenResponseDto?> LoginAsync(LoginRequestDto request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
-        if (user == null)
-            return null;
+        var user = await _context.Users.FirstOrDefaultAsync(
+            u => u.Email == request.Email && u.IsActive);
 
-        // Support both BCrypt hashed and plain-text passwords
-        bool passwordValid = false;
-        if (user.PasswordHash.StartsWith("$2"))
+        if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            try { passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash); }
-            catch { passwordValid = false; }
+            return null;
         }
-        else
+
+        bool passwordValid;
+        try
         {
-            passwordValid = user.PasswordHash == request.Password;
+            passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+        }
+        catch
+        {
+            passwordValid = false;
         }
 
         if (!passwordValid)
+        {
             return null;
+        }
 
-        var token = GenerateJwtToken(user);
-        var refreshToken = Guid.NewGuid().ToString("N");
+        var (accessToken, expiresAt) = GenerateJwtToken(user);
+        var refreshToken = CreateRefreshToken();
 
-        user.RefreshToken = refreshToken;
-        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+        user.RefreshToken = HashRefreshToken(refreshToken);
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(GetRefreshTokenExpirationDays());
         user.LastLogin = DateTime.UtcNow;
+        user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        var roleName = RoleMap.GetValueOrDefault(user.Role, "Employee");
-
         return new TokenResponseDto(
-            token,
+            accessToken,
             refreshToken,
-            DateTime.UtcNow.AddHours(1),
+            expiresAt,
             new UserSummaryDto(
                 user.UserId,
                 user.FullName ?? $"{user.FirstName} {user.LastName}",
                 user.Email,
-                roleName)
+                RoleMap.GetValueOrDefault(user.Role, "Employee"))
         );
     }
 
     public async Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken)
     {
+        if (string.IsNullOrWhiteSpace(refreshToken) || refreshToken.Length > 256)
+        {
+            return null;
+        }
+
+        var refreshTokenHash = HashRefreshToken(refreshToken);
         var user = await _context.Users.FirstOrDefaultAsync(
-            u => u.RefreshToken == refreshToken
+            u => u.RefreshToken == refreshTokenHash
               && u.RefreshTokenExpiry > DateTime.UtcNow
               && u.IsActive);
 
         if (user == null)
+        {
             return null;
+        }
 
-        var newToken = GenerateJwtToken(user);
-        var newRefreshToken = Guid.NewGuid().ToString("N");
+        var (accessToken, expiresAt) = GenerateJwtToken(user);
+        var rotatedRefreshToken = CreateRefreshToken();
 
-        user.RefreshToken = newRefreshToken;
-        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+        user.RefreshToken = HashRefreshToken(rotatedRefreshToken);
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(GetRefreshTokenExpirationDays());
+        user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        var roleName = RoleMap.GetValueOrDefault(user.Role, "Employee");
-
         return new TokenResponseDto(
-            newToken,
-            newRefreshToken,
-            DateTime.UtcNow.AddHours(1),
+            accessToken,
+            rotatedRefreshToken,
+            expiresAt,
             new UserSummaryDto(
                 user.UserId,
                 user.FullName ?? $"{user.FirstName} {user.LastName}",
                 user.Email,
-                roleName)
+                RoleMap.GetValueOrDefault(user.Role, "Employee"))
         );
     }
 
     public async Task<bool> LogoutAsync(int userId)
     {
         var user = await _context.Users.FindAsync(userId);
-        if (user == null) return false;
+        if (user == null)
+        {
+            return false;
+        }
 
         user.RefreshToken = null;
         user.RefreshTokenExpiry = null;
+        user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         return true;
     }
 
-    public async Task<object?> RegisterAsync(dynamic request)
+    private (string Token, DateTime ExpiresAt) GenerateJwtToken(User user)
     {
-        string email = (string)request.Email;
-        string password = (string)request.Password;
-        string firstName = (string)request.FirstName;
-        string lastName = (string)request.LastName;
-        int? companyId = (int?)request.CompanyId;
-        string? companyName = (string?)request.CompanyName;
-
-        if (await _context.Users.AnyAsync(u => u.Email == email))
-            return null;
-
-        if (companyId == null && !string.IsNullOrEmpty(companyName))
+        var jwtSettings = _configuration.GetRequiredSection("JwtSettings");
+        var secretKey = jwtSettings["SecretKey"]
+            ?? throw new InvalidOperationException("JwtSettings:SecretKey is not configured.");
+        var keyBytes = Encoding.UTF8.GetBytes(secretKey);
+        if (keyBytes.Length < 32)
         {
-            var company = new Company
-            {
-                CompanyName = companyName,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _context.Companies.Add(company);
-            await _context.SaveChangesAsync();
-            companyId = company.CompanyId;
+            throw new InvalidOperationException("JwtSettings:SecretKey must contain at least 32 UTF-8 bytes.");
         }
 
-        if (companyId == null)
-            companyId = 1;
-
-        var user = new User
-        {
-            CompanyId = companyId.Value,
-            Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-            FirstName = firstName,
-            LastName = lastName,
-            FullName = $"{firstName} {lastName}".Trim(),
-            Role = companyName != null ? (byte)5 : (byte)0,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        return new
-        {
-            message = "Account created successfully.",
-            userId = user.UserId,
-            email = user.Email
-        };
-    }
-
-    private string GenerateJwtToken(User user)
-    {
-        var jwtSettings = _configuration.GetSection("JwtSettings");
-        var secretKey = jwtSettings["SecretKey"]!;
-        var keyBytes = Encoding.UTF8.GetBytes(secretKey);
         var signingKey = new SymmetricSecurityKey(keyBytes);
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
+        var issuedAt = DateTime.UtcNow;
+        var expiresAt = issuedAt.AddMinutes(GetAccessTokenExpirationMinutes());
 
-        var roleName = RoleMap.GetValueOrDefault(user.Role, "Employee");
-
-        // Use short claim names that match what the validator expects
         var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim("role", roleName),
-            new Claim("companyId", user.CompanyId.ToString())
+            new(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new("role", RoleMap.GetValueOrDefault(user.Role, "Employee")),
+            new("companyId", user.CompanyId.ToString())
         };
-
-        var expirationMinutes = int.TryParse(jwtSettings["AccessTokenExpirationMinutes"], out var mins) ? mins : 60;
 
         var token = new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],
             audience: jwtSettings["Audience"],
             claims: claims,
-            notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(expirationMinutes),
+            notBefore: issuedAt,
+            expires: expiresAt,
             signingCredentials: credentials);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
+
+    private int GetAccessTokenExpirationMinutes()
+    {
+        var minutes = _configuration.GetValue<int?>("JwtSettings:AccessTokenExpirationMinutes") ?? 60;
+        return minutes > 0
+            ? minutes
+            : throw new InvalidOperationException("JwtSettings:AccessTokenExpirationMinutes must be positive.");
+    }
+
+    private int GetRefreshTokenExpirationDays()
+    {
+        var days = _configuration.GetValue<int?>("JwtSettings:RefreshTokenExpirationDays") ?? 7;
+        return days > 0
+            ? days
+            : throw new InvalidOperationException("JwtSettings:RefreshTokenExpirationDays must be positive.");
+    }
+
+    private static string CreateRefreshToken() =>
+        Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
+
+    private static string HashRefreshToken(string refreshToken) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(refreshToken)));
 }

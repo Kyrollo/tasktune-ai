@@ -300,7 +300,6 @@ export default function TasksManagement() {
         };
         // Attach AI recommendation to the just-created task (use == for type-safe comparison)
         if (capturedAiRec && !aiAttached) {
-          // eslint-disable-next-line eqeqeq
           if (newTaskId && mapped.id == newTaskId) {
             mapped.aiRecommendation = capturedAiRec;
             aiAttached = true;
