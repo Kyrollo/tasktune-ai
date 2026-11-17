@@ -50,7 +50,7 @@ Generate a separate private API-to-agent key and store it outside source control
 $bytes = New-Object byte[] 48
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes)
-$agentKey = [Convert]::ToBase64String($bytes)
+$agentKey = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 $rng.Dispose()
 dotnet user-secrets set "AgentServices:ServiceApiKey" $agentKey
 ~~~

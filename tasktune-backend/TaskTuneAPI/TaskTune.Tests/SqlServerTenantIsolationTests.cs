@@ -70,6 +70,30 @@ public sealed class SqlServerTenantIsolationTests
                 Assert.Equal(new[] { "one@tenant.test" },
                     await tenantOne.Users.Select(u => u.Email).ToArrayAsync());
                 Assert.Equal(2, await tenantOne.Users.IgnoreQueryFilters().CountAsync());
+
+            // Force SQL Server to translate every configured tenant filter, including filters
+            // that traverse task/project/user relationships.
+            await tenantOne.Departments.CountAsync();
+            await tenantOne.Positions.CountAsync();
+            await tenantOne.Projects.CountAsync();
+            await tenantOne.RolePermissions.CountAsync();
+            await tenantOne.Reports.CountAsync();
+            await tenantOne.CommunicationLogs.CountAsync();
+            await tenantOne.Tasks.CountAsync();
+            await tenantOne.Subtasks.CountAsync();
+            await tenantOne.TaskComments.CountAsync();
+            await tenantOne.TaskAccessControls.CountAsync();
+            await tenantOne.TaskDependencies.CountAsync();
+            await tenantOne.TaskProgresses.CountAsync();
+            await tenantOne.TaskAttachments.CountAsync();
+            await tenantOne.Evaluations.CountAsync();
+            await tenantOne.Bugs.CountAsync();
+            await tenantOne.Notifications.CountAsync();
+            await tenantOne.AuditLogs.CountAsync();
+            await tenantOne.AIActionsLogs.CountAsync();
+            await tenantOne.ChatThreads.CountAsync();
+            await tenantOne.ChatMessages.CountAsync();
+            await tenantOne.UserSettings.CountAsync();
             }
 
             await using (var tenantTwo = new TaskTuneDbContext(options, new FixedTenantContext(companyTwoId)))
