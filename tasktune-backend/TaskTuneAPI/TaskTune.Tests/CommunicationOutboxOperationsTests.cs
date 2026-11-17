@@ -87,7 +87,7 @@ public sealed class CommunicationOutboxOperationsTests
         Assert.Contains(originalIdempotencyKey, audit.ChangesJson);
 
         var repeated = await service.ReplayDeadLetterAsync(
-            outbox.OutboxId, 1, operatorUser.UserId, "Tried a second time after refresh.", httpContext);
+            outbox.OutboxId, 1, operatorUser.UserId, "Tried a second time after refresh.", true, httpContext);
         Assert.Equal(CommunicationOutboxReplayResult.NotDeadLetter, repeated);
         Assert.Equal(1, await db.AuditLogs.CountAsync());
     }
