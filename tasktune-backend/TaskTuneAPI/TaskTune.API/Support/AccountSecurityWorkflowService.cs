@@ -144,6 +144,7 @@ public sealed class AccountSecurityWorkflowService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             FirstName = firstName.Trim(),
             LastName = lastName.Trim(),
+            FullName = $"{firstName.Trim()} {lastName.Trim()}",
             Role = invitation.InvitedRole.Value,
             DepartmentId = invitation.DepartmentId,
             PositionId = invitation.PositionId,

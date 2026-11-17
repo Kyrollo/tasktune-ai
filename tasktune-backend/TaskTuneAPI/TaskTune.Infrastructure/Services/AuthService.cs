@@ -161,17 +161,17 @@ public class AuthService : IAuthService
 
     public async Task<bool> LogoutAsync(int userId, Guid? sessionId)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.UserId == userId && u.IsActive);
         if (user == null) return false;
 
         var now = DateTime.UtcNow;
-        var sessions = _context.UserSessions.Where(s => s.UserId == userId && s.RevokedAt == null);
+        var sessions = _context.UserSessions.IgnoreQueryFilters().Where(s => s.UserId == userId && s.RevokedAt == null);
         if (sessionId.HasValue)
         {
-            var current = await _context.UserSessions.FirstOrDefaultAsync(s =>
+            var current = await _context.UserSessions.IgnoreQueryFilters().FirstOrDefaultAsync(s =>
                 s.SessionId == sessionId.Value && s.UserId == userId);
             if (current == null) return true;
-            sessions = _context.UserSessions.Where(s =>
+            sessions = _context.UserSessions.IgnoreQueryFilters().Where(s =>
                 s.UserId == userId && s.FamilyId == current.FamilyId && s.RevokedAt == null);
         }
 

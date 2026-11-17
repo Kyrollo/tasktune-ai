@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.DTOs.Users;
 using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
-using TaskTune.API.Support;
 
 namespace TaskTune.API.Controllers;
 
