@@ -7,6 +7,7 @@ namespace TaskTune.API.Support;
 public interface ITransactionalEmailSender
 {
     Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken = default);
+    Task SendCommunicationAsync(string recipient, string subject, string body, IReadOnlyCollection<string>? ccRecipients, CancellationToken cancellationToken = default);
 
     Task SendAsync(
         string recipient,
@@ -60,6 +61,13 @@ public sealed class SmtpTransactionalEmailSender(IConfiguration configuration) :
             if (!string.Equals(cc, recipient, StringComparison.OrdinalIgnoreCase))
                 message.CC.Add(cc);
         }
+        if (ccRecipients != null)
+        {
+            foreach (var cc in ccRecipients.Where(value => !string.IsNullOrWhiteSpace(value))
+                         .Distinct(StringComparer.OrdinalIgnoreCase).Take(25))
+                message.CC.Add(new MailAddress(cc));
+        }
+
         using var client = new SmtpClient(host, port)
         {
             EnableSsl = true,
