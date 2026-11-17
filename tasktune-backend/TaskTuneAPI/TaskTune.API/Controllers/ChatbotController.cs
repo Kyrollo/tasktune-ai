@@ -15,9 +15,14 @@ namespace TaskTune.API.Controllers;
 public class ChatbotController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly TenantEntitlementService _entitlements;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public ChatbotController(TaskTuneDbContext db) => _db = db;
+    public ChatbotController(TaskTuneDbContext db, TenantEntitlementService entitlements)
+    {
+        _db = db;
+        _entitlements = entitlements;
+    }
 
     [HttpGet("threads")]
     public async Task<IActionResult> GetThreads()
@@ -135,6 +140,7 @@ public class ChatbotController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
         if (string.IsNullOrWhiteSpace(request.Content)) return BadRequest(new { message = "Message content is required." });
+        if (request.Content.Length > 16000) return BadRequest(new { message = "Message content cannot exceed 16,000 characters." });
 
         var thread = await _db.ChatThreads.FirstOrDefaultAsync(t => t.ThreadId == threadId && t.UserId == userId.Value);
         if (thread == null) return NotFound();
@@ -147,6 +153,29 @@ public class ChatbotController : BaseApiController
             .Include(u => u.Position)
             .FirstOrDefaultAsync(u => u.UserId == userId.Value && u.CompanyId == companyId.Value && u.IsActive);
         if (user == null) return Unauthorized();
+
+        var idempotencyKey = Request.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            idempotencyKey = $"chat:{threadId}:{Guid.NewGuid():N}";
+        if (idempotencyKey.Length > 160)
+            return BadRequest(new { message = "Idempotency-Key must not exceed 160 characters." });
+
+        try
+        {
+            await _entitlements.ConsumeAiRequestAsync(
+                companyId.Value,
+                idempotencyKey,
+                "ChatMessage",
+                threadId.ToString());
+        }
+        catch (TenantEntitlementException ex)
+        {
+            return StatusCode(ex.StatusCode, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
 
         var userMessage = new ChatMessage
         {
