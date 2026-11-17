@@ -46,6 +46,13 @@ const formatTime = (value, timeZone) => {
   });
 };
 
+const formatDateTime = (value, timeZone) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString([], { timeZone: timeZone || undefined, dateStyle: 'medium', timeStyle: 'short' });
+};
+
 const formatDate = (value) => {
   if (!value) return '—';
   return new Date(`${value}T00:00:00`).toLocaleDateString();
@@ -279,7 +286,7 @@ export default function AttendanceCenter() {
             <CalendarDays size={22} className="text-orange" />
           </div>
           <p className="text-xs text-text-muted">Time zone: {timeZoneId}</p>
-          <p className="text-xs text-text-secondary mt-1">{today?.localNow ? new Date(today.localNow).toLocaleString() : ''}</p>
+          <p className="text-xs text-text-secondary mt-1">{today?.localNow ? formatDateTime(today.localNow, timeZoneId) : ''}</p>
         </Card>
 
         <Card>
