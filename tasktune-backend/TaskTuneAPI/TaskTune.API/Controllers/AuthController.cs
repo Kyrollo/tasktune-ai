@@ -32,7 +32,7 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("auth")]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto dto)
     {
-        var result = await _authService.LoginAsync(dto);
+        var result = await _authService.LoginAsync(dto, Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
         if (result == null) return Unauthorized(new { message = "Invalid credentials." });
         return Ok(result);
     }
@@ -41,7 +41,7 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("auth")]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDto dto)
     {
-        var result = await _authService.RefreshTokenAsync(dto.RefreshToken);
+        var result = await _authService.RefreshTokenAsync(dto.RefreshToken, Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
         if (result == null) return Unauthorized(new { message = "Invalid or expired refresh token." });
         return Ok(result);
     }

@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -18,7 +17,6 @@ public class AuthService : IAuthService
 {
     private readonly TaskTuneDbContext _context;
     private readonly IConfiguration _configuration;
-    private readonly IHttpContextAccessor? _httpContextAccessor;
 
     private static readonly Dictionary<byte, string> RoleMap = new()
     {
@@ -30,14 +28,13 @@ public class AuthService : IAuthService
         { 5, "Admin" }
     };
 
-    public AuthService(TaskTuneDbContext context, IConfiguration configuration, IHttpContextAccessor? httpContextAccessor = null)
+    public AuthService(TaskTuneDbContext context, IConfiguration configuration)
     {
         _context = context;
         _configuration = configuration;
-        _httpContextAccessor = httpContextAccessor;
     }
 
-    public async Task<TokenResponseDto?> LoginAsync(LoginRequestDto request)
+    public async Task<TokenResponseDto?> LoginAsync(LoginRequestDto request, string? userAgent = null, string? ipAddress = null)
     {
         var normalizedEmail = request.Email?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedEmail) || string.IsNullOrEmpty(request.Password))
@@ -73,8 +70,8 @@ public class AuthService : IAuthService
             TokenHash = HashRefreshToken(refreshToken),
             CreatedAt = now,
             ExpiresAt = expiresAt,
-            UserAgent = CurrentUserAgent,
-            IpAddress = CurrentIpAddress
+            UserAgent = NormalizeUserAgent(userAgent),
+            IpAddress = NormalizeIpAddress(ipAddress)
         });
 
         var (accessToken, accessExpiresAt) = GenerateJwtToken(user, sessionId);
@@ -82,7 +79,7 @@ public class AuthService : IAuthService
         return BuildResponse(user, accessToken, refreshToken, accessExpiresAt);
     }
 
-    public async Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken)
+    public async Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken, string? userAgent = null, string? ipAddress = null)
     {
         if (string.IsNullOrWhiteSpace(refreshToken) || refreshToken.Length > 256)
             return null;
@@ -198,84 +195,6 @@ public class AuthService : IAuthService
         foreach (var session in sessions)
             session.RevokedAt = now;
         await _context.SaveChangesAsync();
-    }
-
-    private string? CurrentUserAgent
-    {
-        get
-        {
-            var value = _httpContextAccessor?.HttpContext?.Request.Headers.UserAgent.ToString();
-            return string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 500)];
-        }
-    }
-
-    private string? CurrentIpAddress
-    {
-        get
-        {
-            var value = _httpContextAccessor?.HttpContext?.Connection.RemoteIpAddress?.ToString();
-            return string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 45)];
-        }
-    }
-
-    private TokenResponseDto BuildResponse(User user, string accessToken, string refreshToken, DateTime expiresAt) =>
-        new(
-            accessToken,
-            refreshToken,
-            expiresAt,
-            new UserSummaryDto(
-                user.UserId,
-                user.FullName ?? $"{user.FirstName} {user.LastName}",
-                user.Email,
-                RoleMap.GetValueOrDefault(user.Role, "Employee")));
-
-    private (string Token, DateTime ExpiresAt) GenerateJwtToken(User user, Guid sessionId)
-    {
-        var jwtSettings = _configuration.GetRequiredSection("JwtSettings");
-        var secretKey = jwtSettings["SecretKey"]
-            ?? throw new InvalidOperationException("JwtSettings:SecretKey is not configured.");
-        var keyBytes = Encoding.UTF8.GetBytes(secretKey);
-        if (keyBytes.Length < 32)
-            throw new InvalidOperationException("JwtSettings:SecretKey must contain at least 32 UTF-8 bytes.");
-
-        var signingKey = new SymmetricSecurityKey(keyBytes);
-        var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
-        var issuedAt = DateTime.UtcNow;
-        var expiresAt = issuedAt.AddMinutes(GetAccessTokenExpirationMinutes());
-
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
-            new(JwtRegisteredClaimNames.Email, user.Email),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new("sid", sessionId.ToString()),
-            new("role", RoleMap.GetValueOrDefault(user.Role, "Employee")),
-            new("companyId", user.CompanyId.ToString())
-        };
-
-        var token = new JwtSecurityToken(
-            issuer: jwtSettings["Issuer"],
-            audience: jwtSettings["Audience"],
-            claims: claims,
-            notBefore: issuedAt,
-            expires: expiresAt,
-            signingCredentials: credentials);
-
-        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
-    }
-
-    private int GetAccessTokenExpirationMinutes()
-    {
-        var minutes = _configuration.GetValue<int?>("JwtSettings:AccessTokenExpirationMinutes") ?? 60;
-        return minutes > 0 ? minutes
-            : throw new InvalidOperationException("JwtSettings:AccessTokenExpirationMinutes must be positive.");
-    }
-
-    private int GetRefreshTokenExpirationDays()
-    {
-        var days = _configuration.GetValue<int?>("JwtSettings:RefreshTokenExpirationDays") ?? 7;
-        return days > 0 ? days
-            : throw new InvalidOperationException("JwtSettings:RefreshTokenExpirationDays must be positive.");
     }
 
     private static string CreateRefreshToken() =>
