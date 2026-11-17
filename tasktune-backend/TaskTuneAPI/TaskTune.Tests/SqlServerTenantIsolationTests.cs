@@ -79,6 +79,8 @@ public sealed class SqlServerTenantIsolationTests
             await tenantOne.RolePermissions.CountAsync();
             await tenantOne.Reports.CountAsync();
             await tenantOne.CommunicationLogs.CountAsync();
+            await tenantOne.CommunicationApprovals.CountAsync();
+            await tenantOne.CommunicationOutbox.CountAsync();
             await tenantOne.Tasks.CountAsync();
             await tenantOne.Subtasks.CountAsync();
             await tenantOne.TaskComments.CountAsync();
@@ -111,6 +113,96 @@ public sealed class SqlServerTenantIsolationTests
                 Assert.Empty(await unscoped.Companies.ToListAsync());
                 Assert.Empty(await unscoped.Users.ToListAsync());
             }
+        }
+        finally
+        {
+            await using var cleanup = new TaskTuneDbContext(options, new FixedTenantContext(null));
+            await cleanup.Database.EnsureDeletedAsync();
+        }
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task OutboxClaim_IsAtomicAcrossWorkers_AndExpiredLeaseCanBeReclaimed()
+    {
+        var source = Environment.GetEnvironmentVariable("TASKTUNE_SQLSERVER_TEST_CONNECTION");
+        Assert.False(string.IsNullOrWhiteSpace(source),
+            "TASKTUNE_SQLSERVER_TEST_CONNECTION must be configured by the SQL Server CI service.");
+        var connection = new SqlConnectionStringBuilder(source!)
+        {
+            InitialCatalog = $"TaskTuneOutboxClaim_{Guid.NewGuid():N}"
+        };
+        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
+            .UseSqlServer(connection.ConnectionString)
+            .Options;
+
+        try
+        {
+            long outboxId;
+            int companyId;
+            await using (var seed = new TaskTuneDbContext(options, new FixedTenantContext(null)))
+            {
+                await seed.Database.EnsureCreatedAsync();
+                var company = new Company
+                {
+                    CompanyName = "Outbox Claim Tenant", SettingsJson = "{}",
+                    CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                };
+                seed.Companies.Add(company);
+                await seed.SaveChangesAsync();
+                companyId = company.CompanyId;
+
+                var requester = CreateUser(company, "outbox-owner@tenant.test");
+                seed.Users.Add(requester);
+                await seed.SaveChangesAsync();
+
+                var approval = new CommunicationApproval
+                {
+                    Company = company, CompanyId = companyId,
+                    RequestedByUser = requester, RequestedByUserId = requester.UserId,
+                    CommunicationType = 1, RecipientType = "Individual",
+                    RecipientEmailsJson = "[\"outbox-recipient@tenant.test\"]",
+                    CcEmailsJson = "[]", Subject = "Claim test", Body = "Test",
+                    Status = "Approved", IdempotencyKey = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow
+                };
+                seed.CommunicationApprovals.Add(approval);
+                await seed.SaveChangesAsync();
+
+                var item = new CommunicationOutbox
+                {
+                    Approval = approval, ApprovalId = approval.ApprovalId, CompanyId = companyId,
+                    RecipientEmail = "outbox-recipient@tenant.test", CcEmailsJson = "[]",
+                    Subject = "Claim test", Body = "Test", Status = "Pending",
+                    Attempts = 0, NextAttemptAt = DateTime.UtcNow.AddMinutes(-1),
+                    CreatedAt = DateTime.UtcNow, IdempotencyKey = new string('B', 64)
+                };
+                seed.CommunicationOutbox.Add(item);
+                await seed.SaveChangesAsync();
+                outboxId = item.OutboxId;
+            }
+
+            await using var workerOne = new TaskTuneDbContext(options, new FixedTenantContext(companyId));
+            await using var workerTwo = new TaskTuneDbContext(options, new FixedTenantContext(companyId));
+            var claims = await System.Threading.Tasks.Task.WhenAll(
+                CommunicationOutboxWorker.TryClaimNextAsync(workerOne, 60),
+                CommunicationOutboxWorker.TryClaimNextAsync(workerTwo, 60));
+            var claim = Assert.Single(claims.Where(x => x != null));
+            Assert.Equal(outboxId, claim!.OutboxId);
+            Assert.Equal("Processing", claim.Status);
+            Assert.Equal(1, claim.Attempts);
+            Assert.NotNull(claim.LeaseToken);
+
+            var oldLease = claim.LeaseToken;
+            await workerOne.CommunicationOutbox.IgnoreQueryFilters()
+                .Where(x => x.OutboxId == outboxId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.LeaseExpiresAt, DateTime.UtcNow.AddSeconds(-10)));
+
+            var reclaimed = await CommunicationOutboxWorker.TryClaimNextAsync(workerTwo, 60);
+            Assert.NotNull(reclaimed);
+            Assert.Equal(outboxId, reclaimed.OutboxId);
+            Assert.Equal(2, reclaimed.Attempts);
+            Assert.NotEqual(oldLease, reclaimed.LeaseToken);
         }
         finally
         {

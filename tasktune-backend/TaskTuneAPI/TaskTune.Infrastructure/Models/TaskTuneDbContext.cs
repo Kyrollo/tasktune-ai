@@ -254,6 +254,7 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).IsFixedLength();
             entity.Property(e => e.LastError).HasMaxLength(2000);
             entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAt, e.LeaseExpiresAt });
             entity.HasIndex(e => e.IdempotencyKey).IsUnique();
             entity.HasIndex(e => new { e.CompanyId, e.Status, e.NextAttemptAt });
             entity.HasOne(e => e.Approval).WithMany()

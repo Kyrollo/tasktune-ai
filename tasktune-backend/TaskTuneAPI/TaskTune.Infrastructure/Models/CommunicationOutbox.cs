@@ -17,6 +17,8 @@ public sealed class CommunicationOutbox
     public DateTime? SentAt { get; set; }
     public string? LastError { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
+    public Guid? LeaseToken { get; set; }
+    public DateTime? LeaseExpiresAt { get; set; }
     public byte[] RowVersion { get; set; } = [];
     public CommunicationApproval Approval { get; set; } = null!;
 }
