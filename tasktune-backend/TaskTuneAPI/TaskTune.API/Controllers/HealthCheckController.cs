@@ -31,7 +31,7 @@ public class HealthCheckController : ControllerBase
             {
                 status = "unhealthy",
                 database = false,
-                error = ex.Message,
+                error = "Database connectivity check failed.",
                 timestamp = DateTime.UtcNow
             });
         }
