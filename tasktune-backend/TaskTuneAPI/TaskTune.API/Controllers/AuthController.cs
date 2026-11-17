@@ -50,26 +50,12 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequestDto dto)
+    public IActionResult Register()
     {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
-                return BadRequest(new { message = "Email and password are required." });
-
-            if (dto.Password != dto.ConfirmPassword)
-                return BadRequest(new { message = "Passwords do not match." });
-
-            var result = await _authService.RegisterAsync(dto);
-            if (result == null)
-                return Conflict(new { message = "Email already exists." });
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Registration failed.", error = ex.Message, innerError = ex.InnerException?.Message });
-        }
+        return Problem(
+            statusCode: StatusCodes.Status503ServiceUnavailable,
+            title: "Registration is temporarily unavailable",
+            detail: "Self-service registration is disabled until secure tenant invitations and verification are implemented.");
     }
 }
 

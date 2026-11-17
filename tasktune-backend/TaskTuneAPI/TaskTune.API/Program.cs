@@ -7,39 +7,54 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Json.Serialization;
 using TaskTune.API.Middleware;
-using TaskTune.Infrastructure.Models;
 using TaskTune.Application.Interfaces;
+using TaskTune.Infrastructure.Models;
 using TaskTune.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection is required. Configure it with .NET User Secrets or an environment variable.");
+}
+
+var jwtSettings = builder.Configuration.GetRequiredSection("JwtSettings");
+var secretKey = jwtSettings["SecretKey"];
+if (string.IsNullOrWhiteSpace(secretKey) || Encoding.UTF8.GetByteCount(secretKey) < 32)
+{
+    throw new InvalidOperationException(
+        "JwtSettings:SecretKey must contain at least 32 UTF-8 bytes. Configure a private key with .NET User Secrets or an environment variable.");
+}
+
+var issuer = jwtSettings["Issuer"];
+var audience = jwtSettings["Audience"];
+if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
+{
+    throw new InvalidOperationException("JwtSettings:Issuer and JwtSettings:Audience are required.");
+}
+
+var accessTokenExpirationMinutes = builder.Configuration.GetValue<int?>("JwtSettings:AccessTokenExpirationMinutes") ?? 60;
+var refreshTokenExpirationDays = builder.Configuration.GetValue<int?>("JwtSettings:RefreshTokenExpirationDays") ?? 7;
+if (accessTokenExpirationMinutes <= 0 || refreshTokenExpirationDays <= 0)
+{
+    throw new InvalidOperationException("JWT access-token minutes and refresh-token days must be positive values.");
+}
+
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .WriteTo.File("logs/tasktune-.txt", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 builder.Host.UseSerilog();
 
-// Database
 builder.Services.AddDbContext<TaskTuneDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(connectionString));
 
-// Services (DI)
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITaskService, TaskService>();
-
-// ============================================================
-// JWT Authentication - THIS IS THE CRITICAL SECTION
-// ============================================================
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"]!;
-var keyBytes = Encoding.UTF8.GetBytes(secretKey);
-var signingKey = new SymmetricSecurityKey(keyBytes);
-
-// IMPORTANT: Disable the new JsonWebTokenHandler that v7.x uses by default
-// This is the #1 cause of "signature key was not found"
-JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
-JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -48,46 +63,24 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    // Force use of the legacy JwtSecurityTokenHandler instead of JsonWebTokenHandler
-    options.UseSecurityTokenValidators = true;
-
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
+        ValidIssuer = issuer,
+        ValidAudience = audience,
         IssuerSigningKey = signingKey,
-
-        // Tell the validator which claim types to look for
         NameClaimType = JwtRegisteredClaimNames.Sub,
         RoleClaimType = "role",
-
         ClockSkew = TimeSpan.FromMinutes(2)
-    };
-
-    // Add logging for debugging token issues
-    options.Events = new JwtBearerEvents
-    {
-        OnAuthenticationFailed = context =>
-        {
-            Log.Error("JWT Authentication failed: {Error}", context.Exception.Message);
-            return System.Threading.Tasks.Task.CompletedTask;
-        },
-        OnTokenValidated = context =>
-        {
-            Log.Information("JWT Token validated for: {Claims}",
-                string.Join(", ", context.Principal?.Claims.Select(c => $"{c.Type}={c.Value}") ?? Array.Empty<string>()));
-            return System.Threading.Tasks.Task.CompletedTask;
-        }
     };
 });
 
 builder.Services.AddAuthorization();
 
-// CORS
 builder.Services.AddCors(options =>
     options.AddPolicy("ReactFrontend", policy =>
         policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:3000")
@@ -95,7 +88,6 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod()
               .AllowCredentials()));
 
-// Controllers with JSON cycle handling
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -106,7 +98,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "TaskTune API", Version = "v2" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "TaskTune API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -129,7 +121,6 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
-
 app.UseMiddleware<GlobalExceptionHandler>();
 
 if (app.Environment.IsDevelopment())
@@ -137,9 +128,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-//app.UseSwagger();
-//app.UseSwaggerUI();
 
 app.UseCors("ReactFrontend");
 app.UseAuthentication();

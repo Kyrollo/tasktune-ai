@@ -18,10 +18,14 @@ public class GlobalExceptionHandler
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Unhandled exception");
+            Log.Error(ex, "Unhandled exception. TraceId: {TraceId}", context.TraceIdentifier);
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-            var response = new { message = "An internal server error occurred.", detail = ex.Message };
+            var response = new
+            {
+                message = "An internal server error occurred.",
+                traceId = context.TraceIdentifier
+            };
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }
     }
