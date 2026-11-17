@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 using Xunit;
 
