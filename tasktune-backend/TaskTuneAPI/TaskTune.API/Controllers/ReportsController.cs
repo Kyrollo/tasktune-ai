@@ -32,7 +32,7 @@ public class ReportsController : BaseApiController
             .Include(r => r.GeneratedByNavigation)
             .Where(r => r.CompanyId == companyId.Value);
 
-        if (GetCurrentRole() == "Supervisor")
+        if (GetCurrentRole() is "Supervisor" or "Manager")
             query = query.Where(r => r.GeneratedBy == userId.Value);
 
         var total = await query.CountAsync();
@@ -87,14 +87,15 @@ public class ReportsController : BaseApiController
             .Include(r => r.GeneratedByNavigation)
             .FirstOrDefaultAsync(r => r.ReportId == id && r.CompanyId == companyId.Value);
 
-        if (report == null || (GetCurrentRole() == "Supervisor" && report.GeneratedBy != userId.Value))
+        if (report == null ||
+            (GetCurrentRole() is "Supervisor" or "Manager" && report.GeneratedBy != userId.Value))
             return NotFound();
 
         return Ok(BuildReportResponse(report));
     }
 
     [HttpPost("generate")]
-    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
+    [Authorize(Roles = "CEO,HR,Admin")]
     public async Task<IActionResult> GenerateReport([FromBody] GenerateReportRequest request)
     {
         var userId = GetCurrentUserId();
@@ -159,7 +160,7 @@ public class ReportsController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
+    [Authorize(Roles = "CEO,HR,Admin")]
     public async Task<IActionResult> CreateReport([FromBody] CreateReportRequest request)
     {
         var userId = GetCurrentUserId();
@@ -295,12 +296,14 @@ public class ReportsController : BaseApiController
             .Where(t => t.Project.CompanyId == companyId.Value)
             .Where(t => t.StartDate <= endDate && t.DueDate >= startDate);
 
-        if (user.Role == 1)
+        if (user.Role is 1 or 2)
         {
             tasksQuery = user.DepartmentId.HasValue
-                ? tasksQuery.Where(t => t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
+                ? tasksQuery.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
                     t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value)
-                : tasksQuery.Where(t => t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
+                : tasksQuery.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
         }
 
         if (!selectedDepartment.Equals("All Departments", StringComparison.OrdinalIgnoreCase))

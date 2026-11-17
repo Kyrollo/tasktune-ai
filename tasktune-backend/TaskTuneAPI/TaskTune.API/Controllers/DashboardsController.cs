@@ -86,13 +86,14 @@ public class DashboardsController : BaseApiController
         if (user == null) return Unauthorized();
 
         var taskScope = _db.Tasks.Where(t => t.Project.CompanyId == companyId.Value);
-        if (user.Role == 1)
+        if (user.Role is 1 or 2)
         {
             taskScope = user.DepartmentId.HasValue
-                ? taskScope.Where(t => t.CreatedBy == userId.Value ||
-                    t.AssignedTo == userId.Value ||
+                ? taskScope.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
                     t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value)
-                : taskScope.Where(t => t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
+                : taskScope.Where(t => t.Project.ManagerId == userId.Value ||
+                    t.CreatedBy == userId.Value || t.AssignedTo == userId.Value);
         }
 
         var scopedTaskIds = taskScope.Select(t => t.TaskId);
@@ -105,7 +106,7 @@ public class DashboardsController : BaseApiController
     }
 
     [HttpGet("executive")]
-    [Authorize(Roles = "Manager,CEO,Admin")]
+    [Authorize(Roles = "CEO,Admin")]
     public async Task<IActionResult> ExecutiveDashboard()
     {
         var companyId = GetCurrentCompanyId();

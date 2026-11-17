@@ -57,10 +57,12 @@ public class SearchController : BaseApiController
         tasksQuery = role switch
         {
             0 => tasksQuery.Where(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value),
-            1 when currentUser.DepartmentId.HasValue => tasksQuery.Where(t =>
-                t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
+            1 or 2 when currentUser.DepartmentId.HasValue => tasksQuery.Where(t =>
+                t.Project.ManagerId == userId.Value || t.CreatedBy == userId.Value ||
+                t.AssignedTo == userId.Value ||
                 t.AssignedToNavigation.DepartmentId == currentUser.DepartmentId.Value),
-            1 => tasksQuery.Where(t => t.CreatedBy == userId.Value || t.AssignedTo == userId.Value),
+            1 or 2 => tasksQuery.Where(t => t.Project.ManagerId == userId.Value ||
+                t.CreatedBy == userId.Value || t.AssignedTo == userId.Value),
             _ => tasksQuery.Where(t => t.Project.CompanyId == companyId.Value)
         };
 
@@ -77,7 +79,7 @@ public class SearchController : BaseApiController
         if (role == 0)
             projectsQuery = projectsQuery.Where(p => p.ManagerId == userId.Value ||
                 p.Tasks.Any(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value));
-        else if (role == 1)
+        else if (role is 1 or 2)
             projectsQuery = projectsQuery.Where(p => p.ManagerId == userId.Value ||
                 p.Tasks.Any(t => t.CreatedBy == userId.Value || t.AssignedTo == userId.Value ||
                     (currentUser.DepartmentId.HasValue &&

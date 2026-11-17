@@ -274,11 +274,20 @@ public class TaskService : ITaskService
         {
             0 => query.Where(t => t.AssignedTo == user.UserId || t.CreatedBy == user.UserId),
             1 when user.DepartmentId.HasValue => query.Where(t =>
+                t.Project.ManagerId == user.UserId ||
                 t.CreatedBy == user.UserId ||
                 t.AssignedTo == user.UserId ||
-                t.AssignedToNavigation.DepartmentId == user.DepartmentId),
-            1 => query.Where(t => t.CreatedBy == user.UserId || t.AssignedTo == user.UserId),
-            2 or 3 or 4 or 5 => query.Where(t => t.Project.CompanyId == user.CompanyId),
+                t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value),
+            1 => query.Where(t => t.Project.ManagerId == user.UserId ||
+                t.CreatedBy == user.UserId || t.AssignedTo == user.UserId),
+            2 when user.DepartmentId.HasValue => query.Where(t =>
+                t.Project.ManagerId == user.UserId ||
+                t.CreatedBy == user.UserId ||
+                t.AssignedTo == user.UserId ||
+                t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value),
+            2 => query.Where(t => t.Project.ManagerId == user.UserId ||
+                t.CreatedBy == user.UserId || t.AssignedTo == user.UserId),
+            3 or 4 or 5 => query.Where(t => t.Project.CompanyId == user.CompanyId),
             _ => query.Where(t => t.AssignedTo == user.UserId || t.CreatedBy == user.UserId),
         };
     }
