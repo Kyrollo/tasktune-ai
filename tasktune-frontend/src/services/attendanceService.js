@@ -4,6 +4,8 @@ export const attendanceService = {
   getToday: () => api.get('/attendance/me/today'),
   clockIn: () => api.post('/attendance/clock-in'),
   clockOut: () => api.post('/attendance/clock-out'),
+  generateSchedule: (from, to) => api.post('/attendance/schedule/generate', { from, to }),
+  reconcileMissed: (from, to) => api.post('/attendance/schedule/reconcile-missed', { from, to }),
   getMyTimesheet: (from, to) => api.get('/attendance/me/timesheet', { params: { from, to } }),
   getTeamAttendance: (from, to, employeeUserId) =>
     api.get('/attendance/team', { params: { from, to, employeeUserId } }),
