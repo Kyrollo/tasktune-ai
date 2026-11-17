@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +15,7 @@ public class AttachmentsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly TenantEntitlementService _entitlements;
     private const long MaxFileSize = 10 * 1024 * 1024;
 
     private static readonly Dictionary<string, string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -26,10 +28,14 @@ public class AttachmentsController : BaseApiController
         [".csv"] = "text/csv"
     };
 
-    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env)
+    public AttachmentsController(
+        TaskTuneDbContext db,
+        IWebHostEnvironment env,
+        TenantEntitlementService entitlements)
     {
         _db = db;
         _env = env;
+        _entitlements = entitlements;
     }
 
     [HttpGet]
@@ -120,17 +126,43 @@ public class AttachmentsController : BaseApiController
             UploadedAt = DateTime.UtcNow
         };
 
-        try
+        await using (var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
         {
-            _db.TaskAttachments.Add(attachment);
-            await _db.SaveChangesAsync();
-            await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "UPLOAD", "TaskAttachment", attachment.AttachmentId,
-                after: new { attachment.TaskId, attachment.FileName, attachment.FileSize, attachment.MimeType });
-        }
-        catch
-        {
-            TryDeleteFile(absolutePath);
-            throw;
+            try
+            {
+                await _entitlements.EnsureStorageCapacityAsync(companyId.Value, file.Length);
+
+                _db.TaskAttachments.Add(attachment);
+                await _db.SaveChangesAsync();
+
+                await _entitlements.RecordUsageAsync(
+                    companyId.Value,
+                    "storage_bytes",
+                    attachment.FileSize,
+                    $"attachment:{attachment.AttachmentId}:upload",
+                    "TaskAttachment",
+                    attachment.AttachmentId.ToString());
+
+                await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "UPLOAD", "TaskAttachment", attachment.AttachmentId,
+                    after: new { attachment.TaskId, attachment.FileName, attachment.FileSize, attachment.MimeType });
+                await transaction.CommitAsync();
+            }
+            catch (TenantEntitlementException ex)
+            {
+                await transaction.RollbackAsync();
+                TryDeleteFile(absolutePath);
+                return StatusCode(ex.StatusCode, new
+                {
+                    message = ex.Message,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                TryDeleteFile(absolutePath);
+                throw;
+            }
         }
 
         return CreatedAtAction(nameof(GetAttachments), new { taskId }, new
@@ -190,11 +222,35 @@ public class AttachmentsController : BaseApiController
         var before = new { attachment.FileName, attachment.TaskId, attachment.FileSize };
         var storageRoot = GetPrivateStorageRoot();
         var absolutePath = Path.GetFullPath(Path.Combine(storageRoot, attachment.FilePath));
-        _db.TaskAttachments.Remove(attachment);
-        await _db.SaveChangesAsync();
+        await using (var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
+        {
+            var wasMetered = await _db.TenantUsageEvents.AnyAsync(e =>
+                e.CompanyId == companyId.Value &&
+                e.MeterKey == "storage_bytes" &&
+                e.ResourceType == "TaskAttachment" &&
+                e.ResourceId == attachmentId.ToString() &&
+                e.Quantity > 0);
+
+            _db.TaskAttachments.Remove(attachment);
+            await _db.SaveChangesAsync();
+
+            if (wasMetered)
+            {
+                await _entitlements.RecordUsageAsync(
+                    companyId.Value,
+                    "storage_bytes",
+                    -attachment.FileSize,
+                    $"attachment:{attachmentId}:delete",
+                    "TaskAttachment",
+                    attachmentId.ToString());
+            }
+
+            await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "DELETE", "TaskAttachment", attachmentId,
+                before: before);
+            await transaction.CommitAsync();
+        }
+
         TryDeleteFile(absolutePath);
-        await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "DELETE", "TaskAttachment", attachmentId,
-            before: before);
         return NoContent();
     }
 
