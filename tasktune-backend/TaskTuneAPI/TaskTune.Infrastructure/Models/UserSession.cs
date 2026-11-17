@@ -14,4 +14,5 @@ public partial class UserSession
     public string? UserAgent { get; set; }
     public string? IpAddress { get; set; }
     public byte[] RowVersion { get; set; } = [];
+    public virtual User User { get; set; } = null!;
 }

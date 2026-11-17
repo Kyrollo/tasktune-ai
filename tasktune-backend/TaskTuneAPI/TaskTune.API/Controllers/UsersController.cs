@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.DTOs.Users;
 using TaskTune.API.Support;
@@ -178,6 +179,7 @@ public class UsersController : BaseApiController
 
 
     [HttpPost("invitations")]
+    [EnableRateLimiting("auth")]
     [Authorize(Roles = "Admin,CEO,HR")]
     public async Task<IActionResult> CreateInvitation(
         [FromBody] CreateInvitationRequest request,
@@ -188,9 +190,9 @@ public class UsersController : BaseApiController
         if (actorId == null || companyId == null) return Unauthorized();
 
         var actorRole = GetCurrentRole();
-        if (actorRole.Equals("HR", StringComparison.OrdinalIgnoreCase) && request.Role > 2)
+        if (string.Equals(actorRole, "HR", StringComparison.OrdinalIgnoreCase) && request.Role > 2)
             return Forbid();
-        if (!actorRole.Equals("Admin", StringComparison.OrdinalIgnoreCase) &&
+        if (!string.Equals(actorRole, "Admin", StringComparison.OrdinalIgnoreCase) &&
             request.Role == 5)
             return Forbid();
 

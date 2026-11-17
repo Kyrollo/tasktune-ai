@@ -104,7 +104,7 @@ public class AuthController : ControllerBase
     {
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
-        var currentSession = User.FindFirst("sid")?.Value;
+        Guid? currentSessionId = Guid.TryParse(User.FindFirst("sid")?.Value, out var parsedSession) ? parsedSession : null;
         var sessions = await _db.UserSessions
             .Where(s => s.UserId == userId.Value)
             .OrderByDescending(s => s.CreatedAt)
@@ -116,7 +116,7 @@ public class AuthController : ControllerBase
                 s.RevokedAt,
                 s.UserAgent,
                 s.IpAddress,
-                IsCurrent = s.SessionId.ToString() == currentSession,
+                IsCurrent = currentSessionId.HasValue && s.SessionId == currentSessionId.Value,
                 IsActive = s.RevokedAt == null && s.ConsumedAt == null && s.ExpiresAt > DateTime.UtcNow
             })
             .Take(50)

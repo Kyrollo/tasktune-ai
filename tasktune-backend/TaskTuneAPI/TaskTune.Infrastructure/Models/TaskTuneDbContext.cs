@@ -706,7 +706,7 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.RowVersion).IsRowVersion();
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.HasIndex(e => new { e.UserId, e.FamilyId });
-            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId)
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
