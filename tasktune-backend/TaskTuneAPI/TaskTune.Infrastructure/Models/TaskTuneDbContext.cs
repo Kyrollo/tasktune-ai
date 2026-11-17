@@ -10,6 +10,7 @@ public partial class TaskTuneDbContext : DbContext
 {
     private readonly ITenantContext _tenantContext;
     public int? CurrentTenantId => _tenantContext?.CompanyId;
+    private int TenantIdOrDefault => _tenantContext?.CompanyId ?? 0;
 
     public TaskTuneDbContext(DbContextOptions<TaskTuneDbContext> options, ITenantContext tenantContext = null)
         : base(options)
@@ -620,72 +621,72 @@ public partial class TaskTuneDbContext : DbContext
 
         // Tenant isolation is enforced at the persistence boundary. A missing tenant context
         // intentionally hides all tenant-owned data instead of granting global access.
-        modelBuilder.Entity<Company>().HasQueryFilter(e => CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+        modelBuilder.Entity<Company>().HasQueryFilter(e => TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<User>().HasQueryFilter(e =>
-            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<Department>().HasQueryFilter(e =>
-            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<Position>().HasQueryFilter(e =>
-            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<Project>().HasQueryFilter(e =>
-            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<RolePermission>().HasQueryFilter(e => CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<Report>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && e.GeneratedByNavigation.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<CommunicationLog>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && e.SentByNavigation.CompanyId == CurrentTenantId.Value
-            && (!e.RecipientUserId.HasValue || e.RecipientUser.CompanyId == CurrentTenantId.Value)
-            && (!e.RecipientDepartmentId.HasValue || e.RecipientDepartment.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<Task>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Project.CompanyId == CurrentTenantId.Value
-            && e.AssignedToNavigation.CompanyId == CurrentTenantId.Value
-            && e.CreatedByNavigation.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<Subtask>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<TaskComment>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.User.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<TaskAccessControl>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.User.CompanyId == CurrentTenantId.Value
-            && e.GrantedByNavigation.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<TaskDependency>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.DependsOnTask.Project.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<TaskProgress>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.SubmittedByNavigation.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<TaskAttachment>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.UploadedByNavigation.CompanyId == CurrentTenantId.Value
-            && (!e.ProgressId.HasValue || e.Progress.Task.Project.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<Evaluation>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.EvaluatedUser.CompanyId == CurrentTenantId.Value
-            && e.Evaluator.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<Bug>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Task.Project.CompanyId == CurrentTenantId.Value
-            && e.ReportedByNavigation.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<Notification>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.User.CompanyId == CurrentTenantId.Value
-            && (!e.RelatedTaskId.HasValue || e.RelatedTask.Project.CompanyId == CurrentTenantId.Value)
-            && (!e.RelatedProjectId.HasValue || e.RelatedProject.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<AuditLog>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.User.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<AIActionsLog>().HasQueryFilter(e => CurrentTenantId.HasValue
+            TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<RolePermission>().HasQueryFilter(e => TenantIdOrDefault > 0 && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<Report>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault
+            && e.GeneratedByNavigation.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<CommunicationLog>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault
+            && e.SentByNavigation.CompanyId == TenantIdOrDefault
+            && (!e.RecipientUserId.HasValue || e.RecipientUser.CompanyId == TenantIdOrDefault)
+            && (!e.RecipientDepartmentId.HasValue || e.RecipientDepartment.CompanyId == TenantIdOrDefault));
+        modelBuilder.Entity<Task>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Project.CompanyId == TenantIdOrDefault
+            && e.AssignedToNavigation.CompanyId == TenantIdOrDefault
+            && e.CreatedByNavigation.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<Subtask>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TaskComment>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.User.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TaskAccessControl>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.User.CompanyId == TenantIdOrDefault
+            && e.GrantedByNavigation.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TaskDependency>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.DependsOnTask.Project.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TaskProgress>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.SubmittedByNavigation.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TaskAttachment>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.UploadedByNavigation.CompanyId == TenantIdOrDefault
+            && (!e.ProgressId.HasValue || e.Progress.Task.Project.CompanyId == TenantIdOrDefault));
+        modelBuilder.Entity<Evaluation>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.EvaluatedUser.CompanyId == TenantIdOrDefault
+            && e.Evaluator.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<Bug>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Task.Project.CompanyId == TenantIdOrDefault
+            && e.ReportedByNavigation.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<Notification>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.User.CompanyId == TenantIdOrDefault
+            && (!e.RelatedTaskId.HasValue || e.RelatedTask.Project.CompanyId == TenantIdOrDefault)
+            && (!e.RelatedProjectId.HasValue || e.RelatedProject.CompanyId == TenantIdOrDefault));
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.User.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<AIActionsLog>().HasQueryFilter(e => TenantIdOrDefault > 0
             && (e.UserId.HasValue || e.TaskId.HasValue)
-            && (!e.UserId.HasValue || (e.User != null && e.User.CompanyId == CurrentTenantId.Value))
-            && (!e.TaskId.HasValue || (e.Task != null && e.Task.Project.CompanyId == CurrentTenantId.Value)));
-        modelBuilder.Entity<ChatThread>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.User.CompanyId == CurrentTenantId.Value
-            && (!e.RelatedTaskId.HasValue || e.RelatedTask.Project.CompanyId == CurrentTenantId.Value)
-            && (!e.RelatedProjectId.HasValue || e.RelatedProject.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.Thread.User.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<UserSetting>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.User.CompanyId == CurrentTenantId.Value);
+            && (!e.UserId.HasValue || (e.User != null && e.User.CompanyId == TenantIdOrDefault))
+            && (!e.TaskId.HasValue || (e.Task != null && e.Task.Project.CompanyId == TenantIdOrDefault)));
+        modelBuilder.Entity<ChatThread>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.User.CompanyId == TenantIdOrDefault
+            && (!e.RelatedTaskId.HasValue || e.RelatedTask.Project.CompanyId == TenantIdOrDefault)
+            && (!e.RelatedProjectId.HasValue || e.RelatedProject.CompanyId == TenantIdOrDefault));
+        modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.Thread.User.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<UserSetting>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.User.CompanyId == TenantIdOrDefault);
 
         OnModelCreatingPartial(modelBuilder);
     }
