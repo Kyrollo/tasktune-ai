@@ -37,6 +37,7 @@ const PAGE_NAV_MAP = {
   'AI Control':       { _default: { label: 'AI Control Panel',    path: '/admin/ai',            icon: 'Brain'         } },
   'Audit Logs':       { _default: { label: 'Audit Logs',          path: '/admin/audit',         icon: 'FileText'      } },
   Settings:           { _default: { label: 'Settings',            path: '/settings',            icon: 'Settings'      } },
+  Leave:              { _default: { label: 'Leave Management',     path: '/leave',                icon: 'CalendarDays'  } },
 };
 
 const PAGE_ROUTES = {
@@ -51,9 +52,10 @@ const PAGE_ROUTES = {
   'AI Control':       { _default: ['/admin/ai'] },
   'Audit Logs':       { _default: ['/admin/audit'] },
   Settings:           { _default: ['/settings'] },
+  Leave:              { _default: ['/leave'] },
 };
 
-const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/'];
+const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave'];
 
 const DEFAULT_ROUTE = {
   Employee: '/dashboard', Supervisor: '/supervisor', Manager: '/executive',
@@ -79,7 +81,8 @@ const DB_RESOURCE_MAP = {
     'users': 'Users Management',
     'roles': 'Role Matrix',
     'audit': 'Audit Logs',
-    'ai': 'AI Control'
+    'ai': 'AI Control',
+    'leave': 'Leave'
   };
 
   function buildNavFromPermissions(role, permissions) {
@@ -107,6 +110,8 @@ const DB_RESOURCE_MAP = {
   if (!addedPaths.has('/notifications'))nav.push({ label: 'Notifications',  path: '/notifications', icon: 'Bell'      });
   if (!addedPaths.has('/settings') && grantedPages.has('Settings'))
     nav.push({ label: 'Settings', path: '/settings', icon: 'Settings' });
+  if (!addedPaths.has('/leave'))
+    nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
   return nav;
 }
 
@@ -215,9 +220,11 @@ export function AuthProvider({ children }) {
           else nav.push(item);
         }
       }
+      if (!nav.some((item) => item.path === '/leave'))
+        nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
       return nav;
     }
-    return FALLBACK_NAV[user.role] || [];
+    return [...(FALLBACK_NAV[user.role] || []), { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }];
   }, [user, permissions]);
 
   const getDefaultRoute = useCallback(() =>
