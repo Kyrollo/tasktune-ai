@@ -4,12 +4,12 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Star, Building2, Bell, CheckSquare, ListTodo,
   FolderKanban, BarChart3, Brain, Shield, Users, FileText,
-  MessageSquare, ChevronLeft, ChevronRight, LogOut, Zap, Settings, CalendarDays, CreditCard, Clock3, Clock3
+  MessageSquare, ChevronLeft, ChevronRight, LogOut, Zap, Settings, CalendarDays, CreditCard, Clock3
 } from 'lucide-react';
 
 const iconMap = {
   LayoutDashboard, Star, Building2, Bell, CheckSquare, ListTodo,
-  FolderKanban, BarChart3, Brain, Shield, Users, FileText, MessageSquare, Settings, CalendarDays, CreditCard,
+  FolderKanban, BarChart3, Brain, Shield, Users, FileText, MessageSquare, Settings, CalendarDays, CreditCard, Clock3,
 };
 
 export default function Sidebar() {
