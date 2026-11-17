@@ -10,6 +10,7 @@ public enum CommunicationOutboxReplayResult
     NotFound,
     NotDeadLetter,
     InvalidApprovalState,
+    ProviderConfirmationRequired,
     Conflict
 }
 
@@ -20,11 +21,14 @@ public sealed class CommunicationOutboxOperationsService(TaskTuneDbContext db)
         int companyId,
         int actorUserId,
         string reason,
+        bool providerConfirmedNotAccepted,
         HttpContext httpContext,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length is < 5 or > 1000)
             return CommunicationOutboxReplayResult.Conflict;
+        if (!providerConfirmedNotAccepted)
+            return CommunicationOutboxReplayResult.ProviderConfirmationRequired;
 
         var item = await db.CommunicationOutbox
             .Include(outbox => outbox.Approval)
@@ -65,6 +69,7 @@ public sealed class CommunicationOutboxOperationsService(TaskTuneDbContext db)
                 nextStatus = "Pending",
                 previousAttempts,
                 idempotencyKeyPreserved = item.IdempotencyKey,
+                providerNonAcceptanceConfirmed = providerConfirmedNotAccepted,
                 reconciliationReason = reason.Trim()
             }),
             IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),

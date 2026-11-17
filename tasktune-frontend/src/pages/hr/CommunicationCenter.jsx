@@ -206,14 +206,14 @@ export default function CommunicationCenter() {
     }
 
     const confirmed = window.confirm(
-      'Manual replay can send a duplicate if the SMTP provider accepted the previous attempt but TaskTune did not record it. Check provider logs first. Continue?'
+      'Confirm that you checked provider logs and they show the original message was NOT accepted. Replaying an ambiguously delivered message can create a duplicate. Continue only with confirmed non-acceptance.'
     );
     if (!confirmed) return;
 
     try {
       setOutboxBusyId(outboxId);
       setApprovalError('');
-      await communicationService.replayDeadLetter(outboxId, reason);
+      await communicationService.replayDeadLetter(outboxId, reason, true);
       setDeadLetterReasons((current) => ({ ...current, [outboxId]: '' }));
       await refreshApprovals();
     } catch (err) {

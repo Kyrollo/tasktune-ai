@@ -9,5 +9,5 @@ export const communicationService = {
   approveCommunication: (approvalId) => api.post(`/communications/approvals/${approvalId}/approve`),
   rejectCommunication: (approvalId, reason) => api.post(`/communications/approvals/${approvalId}/reject`, { reason }),
   getDeadLetterOutbox: (page = 1, pageSize = 50) => api.get(`/communications/outbox/dead-letter?page=${page}&pageSize=${pageSize}`),
-  replayDeadLetter: (outboxId, reason) => api.post(`/communications/outbox/${outboxId}/replay`, { reason }),
+  replayDeadLetter: (outboxId, reason, providerConfirmedNotAccepted = false) => api.post(`/communications/outbox/${outboxId}/replay`, { reason, providerConfirmedNotAccepted }),
 };

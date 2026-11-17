@@ -10,6 +10,7 @@ A delivery enters `DeadLetter` after the bounded retry budget is exhausted or an
 2. Check SMTP/provider logs using the recipient, time window and stable Message-ID derived from the existing idempotency key.
 3. Confirm the delivery was not accepted by the provider. If acceptance is ambiguous, do not replay until the external provider or recipient state has been reconciled.
 4. Enter the evidence/reason for replay and confirm the duplicate-delivery warning.
+5. The HTTP API also requires `providerConfirmedNotAccepted=true`; a reason alone cannot requeue the item. This is an operator attestation, not automated verification of the SMTP provider's logs.
 
 ## What replay does
 

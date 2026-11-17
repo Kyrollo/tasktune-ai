@@ -194,3 +194,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Run #80 confirms API build and attachment-tool build, plus frontend/Python jobs, succeeded. The test project itself needed an explicit `Microsoft.AspNetCore.Http` import for `DefaultHttpContext` in the new replay-service tests.
 - Added the missing import; production code and replay behavior are unchanged. Full CI is rerunning.
+
+
+## Replay safety hardening
+
+- The service and HTTP API now require explicit `providerConfirmedNotAccepted=true` as well as a reconciliation reason. Requests without it leave the row in DeadLetter and create no audit event.
+- Added a negative backend regression test for replay without provider non-acceptance confirmation. The browser prompt now explicitly asks the operator to confirm provider-log evidence.
+- This is an operator attestation, not an automated provider verification. At-least-once SMTP semantics and the possibility of duplicates after ambiguous remote acceptance remain.

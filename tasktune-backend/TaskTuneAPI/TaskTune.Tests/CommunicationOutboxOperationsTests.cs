@@ -68,7 +68,7 @@ public sealed class CommunicationOutboxOperationsTests
         httpContext.Request.Headers.UserAgent = "TaskTune.Tests";
         var service = new CommunicationOutboxOperationsService(db);
         var result = await service.ReplayDeadLetterAsync(
-            outbox.OutboxId, 1, operatorUser.UserId, "Provider logs confirm no accepted message.", httpContext);
+            outbox.OutboxId, 1, operatorUser.UserId, "Provider logs confirm no accepted message.", true, httpContext);
 
         Assert.Equal(CommunicationOutboxReplayResult.Success, result);
         Assert.Equal("Pending", outbox.Status);
@@ -90,6 +90,49 @@ public sealed class CommunicationOutboxOperationsTests
             outbox.OutboxId, 1, operatorUser.UserId, "Tried a second time after refresh.", httpContext);
         Assert.Equal(CommunicationOutboxReplayResult.NotDeadLetter, repeated);
         Assert.Equal(1, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task Replay_RequiresExplicitProviderNonAcceptanceConfirmation()
+    {
+        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new TaskTuneDbContext(options, new FixedTenantContext(1));
+        var company = CreateCompany(1);
+        var requester = CreateUser(10, company, "requester@tenant.test");
+        var operatorUser = CreateUser(11, company, "operator@tenant.test");
+        var approval = new CommunicationApproval
+        {
+            ApprovalId = 61, CompanyId = 1, Company = company,
+            RequestedByUserId = requester.UserId, RequestedByUser = requester,
+            RecipientType = "Individual",
+            RecipientEmailsJson = System.Text.Json.JsonSerializer.Serialize(new[] { "recipient@tenant.test" }),
+            CcEmailsJson = "[]", Subject = "Confirm provider state", Body = "Test",
+            Status = "Approved", IdempotencyKey = Guid.NewGuid(), CreatedAt = DateTime.UtcNow
+        };
+        var outbox = new CommunicationOutbox
+        {
+            OutboxId = 101, CompanyId = 1, ApprovalId = approval.ApprovalId, Approval = approval,
+            RecipientEmail = "recipient@tenant.test", Subject = approval.Subject, Body = approval.Body,
+            Status = "DeadLetter", Attempts = 5, CreatedAt = DateTime.UtcNow,
+            NextAttemptAt = DateTime.UtcNow, IdempotencyKey = new string('D', 64)
+        };
+        db.Companies.Add(company);
+        db.Users.AddRange(requester, operatorUser);
+        db.CommunicationApprovals.Add(approval);
+        db.CommunicationOutbox.Add(outbox);
+        await db.SaveChangesAsync();
+
+        var httpContext = new DefaultHttpContext();
+        var service = new CommunicationOutboxOperationsService(db);
+        var result = await service.ReplayDeadLetterAsync(
+            outbox.OutboxId, 1, operatorUser.UserId,
+            "Operator has not verified provider acceptance outcome.", false, httpContext);
+
+        Assert.Equal(CommunicationOutboxReplayResult.ProviderConfirmationRequired, result);
+        Assert.Equal("DeadLetter", outbox.Status);
+        Assert.Equal(5, outbox.Attempts);
+        Assert.Empty(await db.AuditLogs.ToListAsync());
     }
 
     [Fact]
@@ -142,7 +185,7 @@ public sealed class CommunicationOutboxOperationsTests
         var httpContext = new DefaultHttpContext();
         var service = new CommunicationOutboxOperationsService(db);
         var foreignResult = await service.ReplayDeadLetterAsync(
-            foreignOutbox.OutboxId, 1, 20, "Attempt to replay another tenant's outbox.", httpContext);
+            foreignOutbox.OutboxId, 1, 20, "Attempt to replay another tenant's outbox.", true, httpContext);
         Assert.Equal(CommunicationOutboxReplayResult.NotFound, foreignResult);
         Assert.Equal("DeadLetter", foreignOutbox.Status);
 
@@ -184,7 +227,7 @@ public sealed class CommunicationOutboxOperationsTests
         await db.SaveChangesAsync();
 
         var invalidParent = await service.ReplayDeadLetterAsync(
-            rejectedOutbox.OutboxId, 1, 21, "Parent was rejected and must remain blocked.", httpContext);
+            rejectedOutbox.OutboxId, 1, 21, "Parent was rejected and must remain blocked.", true, httpContext);
         Assert.Equal(CommunicationOutboxReplayResult.InvalidApprovalState, invalidParent);
         Assert.Equal("DeadLetter", rejectedOutbox.Status);
     }

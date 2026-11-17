@@ -579,15 +579,20 @@ public class CommunicationsController : BaseApiController
         var reason = request?.Reason?.Trim() ?? string.Empty;
         if (reason.Length < 5 || reason.Length > 1000)
             return BadRequest(new { message = "A reconciliation reason between 5 and 1,000 characters is required." });
+        if (request?.ProviderConfirmedNotAccepted != true)
+            return BadRequest(new { message = "Replay is allowed only after provider logs confirm the original message was not accepted." });
 
         var result = await _outboxOperations.ReplayDeadLetterAsync(
-            outboxId, companyId.Value, userId.Value, reason, HttpContext, cancellationToken);
+            outboxId, companyId.Value, userId.Value, reason,
+            request.ProviderConfirmedNotAccepted, HttpContext, cancellationToken);
 
         if (result == CommunicationOutboxReplayResult.NotFound) return NotFound();
         if (result == CommunicationOutboxReplayResult.NotDeadLetter)
             return Conflict(new { message = "Only dead-lettered deliveries can be replayed." });
         if (result == CommunicationOutboxReplayResult.InvalidApprovalState)
             return Conflict(new { message = "The parent approval is no longer approved. The delivery was not replayed." });
+        if (result == CommunicationOutboxReplayResult.ProviderConfirmationRequired)
+            return BadRequest(new { message = "Provider non-acceptance confirmation is required before replay." });
         if (result == CommunicationOutboxReplayResult.Conflict)
             return Conflict(new { message = "The delivery changed while replay was being requested. Refresh the queue and try again." });
 
@@ -759,4 +764,5 @@ public record CommunicationTemplateDto(string key, string label, string subject,
 public sealed class ReplayDeadLetterRequest
 {
     public string? Reason { get; set; }
+    public bool ProviderConfirmedNotAccepted { get; set; }
 }
