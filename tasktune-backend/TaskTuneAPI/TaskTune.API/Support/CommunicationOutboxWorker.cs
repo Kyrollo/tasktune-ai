@@ -33,10 +33,14 @@ public sealed class CommunicationOutboxWorker(
             {
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<TaskTuneDbContext>();
+                var maxAttempts = Math.Clamp(
+                    configuration.GetValue<int?>("Email:Outbox:MaxAttempts") ?? DefaultMaxAttempts, 1, 20);
+                await MoveExhaustedItemsToDeadLetterAsync(db, maxAttempts, stoppingToken);
                 var item = await TryClaimNextAsync(
                     db,
                     configuration.GetValue<int?>("Email:Outbox:LeaseSeconds") ?? DefaultLeaseSeconds,
-                    stoppingToken);
+                    stoppingToken,
+                    maxAttempts);
 
                 if (item == null)
                 {
@@ -65,12 +69,35 @@ public sealed class CommunicationOutboxWorker(
     /// Atomically claims one due row with UPDLOCK/READPAST. Expired Processing leases
     /// are reclaimed; Attempts increments in the same statement that assigns the lease.
     /// </summary>
+    public static async System.Threading.Tasks.Task<int> MoveExhaustedItemsToDeadLetterAsync(
+        TaskTuneDbContext db,
+        int maxAttempts = DefaultMaxAttempts,
+        CancellationToken cancellationToken = default)
+    {
+        maxAttempts = Math.Clamp(maxAttempts, 1, 20);
+        var now = DateTime.UtcNow;
+        return await db.CommunicationOutbox.IgnoreQueryFilters()
+            .Where(item =>
+                item.Attempts >= maxAttempts &&
+                ((item.Status == "Processing" && item.LeaseExpiresAt.HasValue && item.LeaseExpiresAt <= now) ||
+                 (item.Status == "Pending" && item.NextAttemptAt <= now)))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Status, "DeadLetter")
+                .SetProperty(item => item.LastError,
+                    "Retry budget exhausted or delivery outcome unknown. Manual reconciliation is required before replay.")
+                .SetProperty(item => item.LeaseToken, (Guid?)null)
+                .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null),
+                cancellationToken);
+    }
+
     public static async System.Threading.Tasks.Task<CommunicationOutbox?> TryClaimNextAsync(
         TaskTuneDbContext db,
         int leaseSeconds = DefaultLeaseSeconds,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maxAttempts = DefaultMaxAttempts)
     {
         leaseSeconds = Math.Clamp(leaseSeconds, 30, 900);
+        maxAttempts = Math.Clamp(maxAttempts, 1, 20);
         var leaseToken = Guid.NewGuid();
 
         var claimed = await db.CommunicationOutbox
@@ -80,9 +107,12 @@ public sealed class CommunicationOutboxWorker(
                     SELECT TOP (1) *
                     FROM dbo.CommunicationOutbox WITH (UPDLOCK, READPAST, ROWLOCK)
                     WHERE
-                        (Status = N'Pending' AND NextAttemptAt <= SYSUTCDATETIME())
-                        OR
-                        (Status = N'Processing' AND LeaseExpiresAt <= SYSUTCDATETIME())
+                        (
+                            (Status = N'Pending' AND NextAttemptAt <= SYSUTCDATETIME())
+                            OR
+                            (Status = N'Processing' AND LeaseExpiresAt <= SYSUTCDATETIME())
+                        )
+                        AND Attempts < {maxAttempts}
                     ORDER BY
                         CASE WHEN Status = N'Pending' THEN NextAttemptAt ELSE LeaseExpiresAt END,
                         OutboxId

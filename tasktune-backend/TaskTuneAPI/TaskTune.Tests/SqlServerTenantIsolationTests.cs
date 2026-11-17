@@ -204,6 +204,29 @@ public sealed class SqlServerTenantIsolationTests
             Assert.Equal(outboxId, reclaimed.OutboxId);
             Assert.Equal(2, reclaimed.Attempts);
             Assert.NotEqual(oldLease, reclaimed.LeaseToken);
+
+            // Expired leases at the retry limit are not reclaimed forever. They are
+            // moved to DeadLetter for operator reconciliation because SMTP acceptance
+            // may have occurred before the prior worker lost its lease.
+            await workerOne.CommunicationOutbox.IgnoreQueryFilters()
+                .Where(x => x.OutboxId == outboxId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Attempts, 5)
+                    .SetProperty(x => x.LeaseExpiresAt, DateTime.UtcNow.AddSeconds(-10)));
+
+            var exhaustedClaim = await CommunicationOutboxWorker.TryClaimNextAsync(
+                workerTwo, 60, maxAttempts: 5);
+            Assert.Null(exhaustedClaim);
+
+            var deadLettered = await CommunicationOutboxWorker.MoveExhaustedItemsToDeadLetterAsync(
+                workerOne, maxAttempts: 5);
+            Assert.Equal(1, deadLettered);
+
+            var exhaustedItem = await workerTwo.CommunicationOutbox.IgnoreQueryFilters()
+                .SingleAsync(x => x.OutboxId == outboxId);
+            Assert.Equal("DeadLetter", exhaustedItem.Status);
+            Assert.Null(exhaustedItem.LeaseToken);
+            Assert.Null(exhaustedItem.LeaseExpiresAt);
         }
         finally
         {

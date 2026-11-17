@@ -75,6 +75,21 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db)
         {
             return CommunicationApprovalResult.AlreadyReviewed;
         }
+        catch (DbUpdateException)
+        {
+            // A simultaneous reviewer can win the approval transition. SQL Server
+            // rolls back the approval + recipient outbox transaction on unique/FK errors.
+            db.ChangeTracker.Clear();
+            var latestStatus = await db.CommunicationApprovals.AsNoTracking()
+                .Where(a => a.ApprovalId == approvalId && a.CompanyId == companyId)
+                .Select(a => a.Status)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (latestStatus != null && latestStatus != "Pending")
+                return CommunicationApprovalResult.AlreadyReviewed;
+            if (latestStatus == null)
+                return CommunicationApprovalResult.NotFound;
+            throw;
+        }
     }
 
     public async System.Threading.Tasks.Task<CommunicationApprovalResult> RejectAsync(
@@ -100,6 +115,19 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db)
         catch (DbUpdateConcurrencyException)
         {
             return CommunicationApprovalResult.AlreadyReviewed;
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            var latestStatus = await db.CommunicationApprovals.AsNoTracking()
+                .Where(a => a.ApprovalId == approvalId && a.CompanyId == companyId)
+                .Select(a => a.Status)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (latestStatus != null && latestStatus != "Pending")
+                return CommunicationApprovalResult.AlreadyReviewed;
+            if (latestStatus == null)
+                return CommunicationApprovalResult.NotFound;
+            throw;
         }
     }
 

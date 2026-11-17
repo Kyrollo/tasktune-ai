@@ -427,7 +427,31 @@ public class CommunicationsController : BaseApiController
             OutputData = "Communication approval requested; no external delivery was attempted.",
             ModelVersion = "communication_approval", Timestamp = DateTime.UtcNow
         });
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The unique (CompanyId, IdempotencyKey) index is the final race-safe guard.
+            // If another request won the insert race, return its durable result instead of 500.
+            _db.ChangeTracker.Clear();
+            var duplicate = await _db.CommunicationApprovals.AsNoTracking()
+                .Where(a => a.CompanyId == companyId.Value && a.IdempotencyKey == request.IdempotencyKey)
+                .Select(a => new { a.ApprovalId, a.Status, a.CreatedAt })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (duplicate == null) throw;
+
+            return Accepted(new
+            {
+                approvalId = duplicate.ApprovalId,
+                status = duplicate.Status,
+                createdAt = duplicate.CreatedAt,
+                duplicate = true,
+                message = "This request was already recorded. No additional message was queued."
+            });
+        }
+
         await AuditLogWriter.WriteAsync(_db, HttpContext, userId.Value,
             "communication.requested", "CommunicationApproval", approval.ApprovalId,
             after: new { status = approval.Status, recipientCount = recipientEmails.Count });

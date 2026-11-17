@@ -98,12 +98,14 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 - Added a hosted outbox dispatcher with atomic SQL Server `UPDLOCK`/`READPAST` claims, expiring leases, bounded retries with jitter, dead-letter state, redacted failure records and stable RFC Message-ID values.
 - The dispatcher is controlled by `Email:Outbox:Enabled` and defaults to off. It sends one recipient per outbox row and supports the validated CC snapshot.
 - SMTP is at-least-once, not exactly-once: a worker crash after provider acceptance but before the Sent update can result in a retry. The stable Message-ID is a deduplication aid only; provider-side idempotency or manual reconciliation is still required for ambiguous delivery outcomes.
+- Hardened concurrent idempotency-key insert races and concurrent maker-checker transitions so database uniqueness/concurrency conflicts resolve to the already-persisted result instead of producing duplicate outbox entries or an unhandled 500.
+- Added a terminal retry-budget transition: expired Processing leases or due Pending rows at the maximum attempts are moved to DeadLetter and excluded from further claims until operator reconciliation.
 
 ## Verification for phase 7 foundation
 
 - Added regression tests for maker-checker separation, tenant scoping, one-time approval/rejection, per-recipient outbox creation and deterministic idempotency keys.
 - Approval/outbox foundation commit `65652dceb4af68744d8490f86ca91e11deae1dbd` passed all three GitHub Actions jobs in run [#44182304265](https://github.com/Kyrollo/tasktune-ai/actions/runs/44182304265): API build and regression tests, frontend lint/build, and Python syntax/tests.
-- Dispatcher commit initially exposed a compile-time query-chain error in the atomic claim method. The follow-up fix moves `FromSqlInterpolated` to the `DbSet` root before applying `IgnoreQueryFilters`; the corrected commit is now under CI verification. The SQL Server concurrency test covers competing worker claims and expired-lease reclamation.
+- Dispatcher commit initially exposed a compile-time query-chain error in the atomic claim method. The follow-up fix moves `FromSqlInterpolated` to the `DbSet` root before applying `IgnoreQueryFilters`; the corrected commit is now under CI verification. The SQL Server concurrency test covers competing worker claims, expired-lease reclamation and retry-budget exhaustion to DeadLetter.
 - The SQL Server lease migration must still be applied and rehearsed in a backed-up deployment environment before enabling SMTP.
 
 ## Remaining implementation and production gates
@@ -111,7 +113,7 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 1. Finish the exhaustive authorization matrix covering endpoints, raw SQL, exports, scheduled tasks, caches, uploads/downloads, webhooks and agent tools. Add negative tests for each privileged boundary and cross-tenant resource.
 2. Expand SQL Server schema and migration coverage: relationship-owned query filters, composite foreign keys, transactions, rowversion races, migration repeatability, forward compatibility and backup/restore rehearsal.
 3. Build a private legacy attachment migration utility with inventory, checksum validation, traversal/symlink protection, transactional metadata updates and a rollback manifest. Do not delete old files before verification and backup.
-4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age alerts and an operator dead-letter/replay screen. The dispatcher itself is implemented but remains disabled by default.
+4. Complete provider-side idempotency or manual reconciliation for ambiguous SMTP outcomes; add per-tenant delivery quotas, queue-age alerts and an operator dead-letter/replay screen. Retry exhaustion is now persisted as DeadLetter; the dispatcher remains disabled by default.
 5. Complete outbound recipient policy, approval notifications, bounce handling and delivery audit. Production SMTP must remain disabled until end-to-end staging tests pass.
 6. Finish AI tool authorization, RAG document ACL enforcement, provider capability registry, usage budgets, egress allowlisting and managed secret-vault integration; verify prompt-injection and cross-tenant adversarial scenarios.
 7. Add enterprise MFA/SSO, frontend BFF/HttpOnly cookie migration, CSRF controls and privileged-account access reviews.
