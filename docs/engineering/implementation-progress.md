@@ -44,7 +44,7 @@ This record tracks implementation against the product and engineering plan. It s
 ## Verification evidence
 
 - Phase 1 GitHub Actions run on `0874d70c332b0e4220bca36f2a099ba9a9d42785`: all three workflow jobs passed.
-- Phase 2 GitHub Actions run on `e7f6e33bd0858fb681925de8248d6583b2d8b295`: backend build and regression tests passed; frontend lint and production build passed; Python agent syntax validation passed.
+- Latest phase 2 GitHub Actions run on `0e2292be0c032042e5167ea0ca258e9c13a19408` (run [#44100782429](https://github.com/Kyrollo/tasktune-ai/actions/runs/44100782429)): backend build and regression tests passed; frontend lint and production build passed; Python agent syntax validation passed.
 - Tenant-isolation and task-scope tests use EF Core InMemory. They are regression tests, not a substitute for SQL Server-backed integration tests, migration rehearsal, penetration testing, or production security review.
 - Local .NET execution was not available in the implementation environment; GitHub Actions is the build/test evidence.
 - Frontend install reported 19 dependency advisories (1 low, 4 moderate, 14 high). No blind `npm audit fix` was applied; affected packages still need targeted triage and upgrades.
