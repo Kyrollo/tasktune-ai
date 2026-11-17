@@ -127,4 +127,25 @@ WHERE NOT EXISTS
     WHERE lt.CompanyId = c.CompanyId AND lt.Code = v.Code
 );
 
+IF OBJECT_ID(N'dbo.LeaveRequestBalanceAllocations', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.LeaveRequestBalanceAllocations
+    (
+        LeaveRequestBalanceAllocationId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_LeaveRequestBalanceAllocations PRIMARY KEY,
+        CompanyId INT NOT NULL,
+        LeaveRequestId INT NOT NULL,
+        LeaveBalanceId INT NOT NULL,
+        LeaveYear INT NOT NULL,
+        AllocatedDays DECIMAL(8,2) NOT NULL,
+        CreatedAt DATETIME2(7) NOT NULL CONSTRAINT DF_LeaveRequestBalanceAllocations_CreatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_LeaveRequestBalanceAllocations_Companies FOREIGN KEY (CompanyId) REFERENCES dbo.Companies(CompanyId),
+        CONSTRAINT FK_LeaveRequestBalanceAllocations_Requests FOREIGN KEY (LeaveRequestId) REFERENCES dbo.LeaveRequests(LeaveRequestId),
+        CONSTRAINT FK_LeaveRequestBalanceAllocations_Balances FOREIGN KEY (LeaveBalanceId) REFERENCES dbo.LeaveBalances(LeaveBalanceId),
+        CONSTRAINT CK_LeaveRequestBalanceAllocations_Days CHECK (AllocatedDays > 0),
+        CONSTRAINT CK_LeaveRequestBalanceAllocations_Year CHECK (LeaveYear BETWEEN 2000 AND 2200)
+    );
+    CREATE UNIQUE INDEX UQ_LeaveRequestBalanceAllocations
+        ON dbo.LeaveRequestBalanceAllocations(CompanyId, LeaveRequestId, LeaveBalanceId);
+END;
+
 COMMIT TRANSACTION;
