@@ -15,4 +15,5 @@ public partial class AccountSecurityToken
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime? ConsumedAt { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 }

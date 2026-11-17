@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -16,6 +17,7 @@ public class AuthService : IAuthService
 {
     private readonly TaskTuneDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
 
     private static readonly Dictionary<byte, string> RoleMap = new()
     {
@@ -27,10 +29,11 @@ public class AuthService : IAuthService
         { 5, "Admin" }
     };
 
-    public AuthService(TaskTuneDbContext context, IConfiguration configuration)
+    public AuthService(TaskTuneDbContext context, IConfiguration configuration, IHttpContextAccessor? httpContextAccessor = null)
     {
         _context = context;
         _configuration = configuration;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<TokenResponseDto?> LoginAsync(LoginRequestDto request)
@@ -68,7 +71,9 @@ public class AuthService : IAuthService
             FamilyId = familyId,
             TokenHash = HashRefreshToken(refreshToken),
             CreatedAt = now,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            UserAgent = CurrentUserAgent,
+            IpAddress = CurrentIpAddress
         });
 
         var (accessToken, accessExpiresAt) = GenerateJwtToken(user, sessionId);
@@ -117,7 +122,9 @@ public class AuthService : IAuthService
             FamilyId = session.FamilyId,
             TokenHash = HashRefreshToken(nextRefreshToken),
             CreatedAt = now,
-            ExpiresAt = nextExpiry
+            ExpiresAt = nextExpiry,
+            UserAgent = CurrentUserAgent,
+            IpAddress = CurrentIpAddress
         };
 
         var relational = _context.Database.IsRelational();
@@ -181,7 +188,7 @@ public class AuthService : IAuthService
         return true;
     }
 
-    private async Task RevokeFamilyAsync(int userId, Guid familyId)
+    private async System.Threading.Tasks.Task RevokeFamilyAsync(int userId, Guid familyId)
     {
         var now = DateTime.UtcNow;
         var sessions = await _context.UserSessions.IgnoreQueryFilters()
@@ -190,6 +197,24 @@ public class AuthService : IAuthService
         foreach (var session in sessions)
             session.RevokedAt = now;
         await _context.SaveChangesAsync();
+    }
+
+    private string? CurrentUserAgent
+    {
+        get
+        {
+            var value = _httpContextAccessor?.HttpContext?.Request.Headers.UserAgent.ToString();
+            return string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 500)];
+        }
+    }
+
+    private string? CurrentIpAddress
+    {
+        get
+        {
+            var value = _httpContextAccessor?.HttpContext?.Connection.RemoteIpAddress?.ToString();
+            return string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 45)];
+        }
     }
 
     private TokenResponseDto BuildResponse(User user, string accessToken, string refreshToken, DateTime expiresAt) =>

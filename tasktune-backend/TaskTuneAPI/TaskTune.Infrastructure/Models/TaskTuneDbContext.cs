@@ -717,6 +717,7 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
             entity.Property(e => e.Purpose).IsRequired().HasMaxLength(40);
             entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.RowVersion).IsRowVersion();
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.HasIndex(e => new { e.CompanyId, e.Purpose, e.Email });
             entity.HasIndex(e => e.ExpiresAt);

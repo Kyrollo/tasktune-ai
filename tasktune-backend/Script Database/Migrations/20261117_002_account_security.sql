@@ -47,6 +47,7 @@ BEGIN
         CreatedAt DATETIME2(3) NOT NULL,
         ExpiresAt DATETIME2(3) NOT NULL,
         ConsumedAt DATETIME2(3) NULL,
+        RowVersion ROWVERSION NOT NULL,
         CONSTRAINT FK_AccountSecurityTokens_Companies FOREIGN KEY (CompanyId)
             REFERENCES dbo.Companies(CompanyId) ON DELETE CASCADE,
         CONSTRAINT FK_AccountSecurityTokens_Users FOREIGN KEY (UserId)
