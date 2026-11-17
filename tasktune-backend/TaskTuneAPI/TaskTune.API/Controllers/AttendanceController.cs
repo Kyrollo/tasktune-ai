@@ -29,7 +29,7 @@ public sealed class AttendanceController : BaseApiController
             return StatusCode(503, new { message = "The company time zone is invalid. HR must correct the work calendar settings." });
 
         var now = DateTime.UtcNow;
-        var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, timeZone);
+        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
         var workDate = DateOnly.FromDateTime(localNow);
         var assignment = await FindShiftForDateAsync(companyId.Value, userId.Value, workDate);
         var record = await _db.AttendanceRecords.AsNoTracking()
@@ -434,8 +434,6 @@ public sealed class AttendanceController : BaseApiController
     private async Task<AssignedShift?> FindShiftForDateAsync(int companyId, int userId, DateOnly workDate)
     {
         var dayMask = AttendanceScheduleCalculator.GetWeekdayMask(workDate.DayOfWeek);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-
         var assignment = await (
             from link in _db.EmployeeShiftAssignments.AsNoTracking()
             join shift in _db.WorkShifts.AsNoTracking() on link.WorkShiftId equals shift.WorkShiftId
