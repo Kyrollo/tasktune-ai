@@ -17,7 +17,8 @@ public interface ITransactionalEmailSender
         string subject,
         string body,
         IReadOnlyCollection<string>? ccRecipients,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default) =>
+        SendAsync(recipient, subject, body, cancellationToken);
 }
 
 public sealed class SmtpTransactionalEmailSender(IConfiguration configuration) : ITransactionalEmailSender
