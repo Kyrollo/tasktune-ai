@@ -28,9 +28,8 @@ public sealed class AttendanceController : BaseApiController
         if (timeZone == null)
             return StatusCode(503, new { message = "The company time zone is invalid. HR must correct the work calendar settings." });
 
-        var now = DateTime.UtcNow;
         var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
-        var workDate = DateOnly.FromDateTime(localNow);
+        var workDate = DateOnly.FromDateTime(localNow.DateTime);
         var assignment = await FindShiftForDateAsync(companyId.Value, userId.Value, workDate);
         var record = await _db.AttendanceRecords.AsNoTracking()
             .FirstOrDefaultAsync(x => x.CompanyId == companyId.Value &&
