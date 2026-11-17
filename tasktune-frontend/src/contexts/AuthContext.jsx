@@ -39,6 +39,7 @@ const PAGE_NAV_MAP = {
   Settings:           { _default: { label: 'Settings',            path: '/settings',            icon: 'Settings'      } },
   Leave:              { _default: { label: 'Leave Management',     path: '/leave',                icon: 'CalendarDays'  } },
   Subscription:       { _default: { label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard'    } },
+  Attendance:         { _default: { label: 'Attendance & Shifts', path: '/attendance',          icon: 'Clock3'        } },
 };
 
 const PAGE_ROUTES = {
@@ -55,9 +56,10 @@ const PAGE_ROUTES = {
   Settings:           { _default: ['/settings'] },
   Leave:              { _default: ['/leave'] },
   Subscription:       { _default: ['/admin/subscription'] },
+  Attendance:         { _default: ['/attendance'] },
 };
 
-const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave'];
+const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave', '/attendance'];
 
 const DEFAULT_ROUTE = {
   Employee: '/dashboard', Supervisor: '/supervisor', Manager: '/executive',
@@ -224,9 +226,11 @@ export function AuthProvider({ children }) {
       }
       if (!nav.some((item) => item.path === '/leave'))
         nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
+      if (!nav.some((item) => item.path === '/attendance'))
+        nav.push({ label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' });
       return nav;
     }
-    return [...(FALLBACK_NAV[user.role] || []), { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }];
+    return [...(FALLBACK_NAV[user.role] || []), { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }, { label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' }];
   }, [user, permissions]);
 
   const getDefaultRoute = useCallback(() =>
