@@ -12,8 +12,8 @@ public sealed class LeaveCalendarCalculatorTests
             new DateOnly(2026, 12, 31),
             new DateOnly(2027, 1, 4));
 
-        Assert.Equal(2m, result[2026]);
-        Assert.Equal(1m, result[2027]);
+        Assert.Equal(1m, result[2026]);
+        Assert.Equal(2m, result[2027]);
         Assert.Equal(3m, result.Values.Sum());
     }
 
