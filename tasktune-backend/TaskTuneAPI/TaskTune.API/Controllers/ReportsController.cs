@@ -360,7 +360,7 @@ public class ReportsController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
-        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration, agentConfig.BaseUrl))
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         try
         {

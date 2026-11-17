@@ -156,8 +156,28 @@ public static class AIConfigurationStore
 
         var config = TryParse(company.SettingsJson, companyId) ?? TaskTuneAIConfiguration.CreateDefault(companyId);
         Normalize(config, companyId);
+        var migrateLegacySecrets = config.Agents.Values.Any(agent =>
+            !string.IsNullOrWhiteSpace(agent.ApiKey) &&
+            !agent.ApiKey.StartsWith(EncryptedPrefix, StringComparison.Ordinal));
+
         foreach (var agent in config.Agents.Values)
             agent.ApiKey = Unprotect(agent.ApiKey, configuration);
+
+        if (migrateLegacySecrets)
+        {
+            var stored = JsonSerializer.Deserialize<TaskTuneAIConfiguration>(
+                JsonSerializer.Serialize(config, JsonOptions), JsonOptions)
+                ?? TaskTuneAIConfiguration.CreateDefault(companyId);
+            foreach (var agent in stored.Agents.Values)
+                agent.ApiKey = Protect(agent.ApiKey, configuration);
+
+            JsonObject root;
+            try { root = JsonNode.Parse(company.SettingsJson ?? "{}")?.AsObject() ?? []; }
+            catch { root = []; }
+            root["aiConfig"] = JsonSerializer.SerializeToNode(stored, JsonOptions);
+            company.SettingsJson = root.ToJsonString(JsonOptions);
+            await db.SaveChangesAsync();
+        }
 
         return config;
     }
@@ -230,7 +250,7 @@ public static class AIConfigurationStore
 
     private static string? Protect(string? plaintext, IConfiguration configuration)
     {
-        if (string.IsNullOrWhiteSpace(plaintext) || plaintext.StartsWith(EncryptedPrefix, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(plaintext))
             return plaintext;
 
         var key = GetEncryptionKey(configuration);

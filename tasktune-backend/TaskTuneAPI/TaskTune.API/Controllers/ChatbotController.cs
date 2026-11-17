@@ -253,7 +253,7 @@ public class ChatbotController : BaseApiController
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-            if (!AgentServiceSecurity.TryConfigure(http, _configuration)) return null;
+            if (!AgentServiceSecurity.TryConfigure(http, _configuration, agentConfig.BaseUrl)) return null;
             var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
             var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
             var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);
