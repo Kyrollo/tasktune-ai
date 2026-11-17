@@ -412,25 +412,37 @@ public sealed class LeaveController : BaseApiController
         if (leaveRequest.UserId == actorId.Value)
             return Forbid();
 
-        var balance = await _db.LeaveBalances.FirstOrDefaultAsync(x =>
-            x.CompanyId == companyId.Value &&
-            x.UserId == leaveRequest.UserId &&
-            x.LeaveTypeId == leaveRequest.LeaveTypeId &&
-            x.Year == leaveRequest.StartDate.Year);
-        if (balance == null || balance.PendingDays < leaveRequest.RequestedDays)
-            return Conflict(new { message = "The matching leave balance is missing or inconsistent. HR must reconcile it." });
+        var allocations = await _db.LeaveRequestBalanceAllocations
+            .Where(x => x.CompanyId == companyId.Value && x.LeaveRequestId == leaveRequestId)
+            .ToListAsync();
+        if (allocations.Count == 0 || allocations.Sum(x => x.AllocatedDays) != leaveRequest.RequestedDays)
+            return Conflict(new { message = "The leave request has no valid annual balance allocation ledger. HR must reconcile it." });
+
+        var balanceIds = allocations.Select(x => x.LeaveBalanceId).Distinct().ToList();
+        var balances = await _db.LeaveBalances
+            .Where(x => x.CompanyId == companyId.Value && x.UserId == leaveRequest.UserId && balanceIds.Contains(x.LeaveBalanceId))
+            .ToListAsync();
+        if (balances.Count != balanceIds.Count)
+            return Conflict(new { message = "One or more annual leave balances are missing. HR must reconcile the request." });
+
+        foreach (var allocation in allocations)
+        {
+            var annualBalance = balances.First(x => x.LeaveBalanceId == allocation.LeaveBalanceId);
+            if (annualBalance.PendingDays < allocation.AllocatedDays)
+                return Conflict(new { message = $"The pending balance for {allocation.LeaveYear} is inconsistent. HR must reconcile it." });
+
+            annualBalance.PendingDays -= allocation.AllocatedDays;
+            if (request.Approve)
+                annualBalance.UsedDays += allocation.AllocatedDays;
+            annualBalance.UpdatedAt = DateTime.UtcNow;
+        }
 
         var before = new { leaveRequest.Status, leaveRequest.DecisionBy, leaveRequest.DecisionAt };
-        balance.PendingDays -= leaveRequest.RequestedDays;
-        if (request.Approve)
-            balance.UsedDays += leaveRequest.RequestedDays;
-
         leaveRequest.Status = request.Approve ? "approved" : "rejected";
         leaveRequest.DecisionBy = actorId.Value;
         leaveRequest.DecisionAt = DateTime.UtcNow;
         leaveRequest.DecisionComment = request.Comment?.Trim();
         leaveRequest.UpdatedAt = DateTime.UtcNow;
-        balance.UpdatedAt = DateTime.UtcNow;
 
         try
         {
@@ -466,17 +478,33 @@ public sealed class LeaveController : BaseApiController
         if (leaveRequest.Status != "pending")
             return Conflict(new { message = "Only pending leave requests can be cancelled by the employee." });
 
-        var balance = await _db.LeaveBalances.FirstOrDefaultAsync(x =>
-            x.CompanyId == companyId.Value &&
-            x.UserId == actorId.Value &&
-            x.LeaveTypeId == leaveRequest.LeaveTypeId &&
-            x.Year == leaveRequest.StartDate.Year);
-        if (balance == null || balance.PendingDays < leaveRequest.RequestedDays)
-            return Conflict(new { message = "The matching leave balance is missing or inconsistent. HR must reconcile it." });
+        var allocations = await _db.LeaveRequestBalanceAllocations
+            .Where(x => x.CompanyId == companyId.Value && x.LeaveRequestId == leaveRequestId)
+            .ToListAsync();
+        if (allocations.Count == 0 || allocations.Sum(x => x.AllocatedDays) != leaveRequest.RequestedDays)
+            return Conflict(new { message = "The leave request has no valid annual balance allocation ledger. HR must reconcile it." });
 
-        var before = new { leaveRequest.Status, balance.PendingDays };
-        balance.PendingDays -= leaveRequest.RequestedDays;
-        balance.UpdatedAt = DateTime.UtcNow;
+        var balanceIds = allocations.Select(x => x.LeaveBalanceId).Distinct().ToList();
+        var balances = await _db.LeaveBalances
+            .Where(x => x.CompanyId == companyId.Value && x.UserId == actorId.Value && balanceIds.Contains(x.LeaveBalanceId))
+            .ToListAsync();
+        if (balances.Count != balanceIds.Count)
+            return Conflict(new { message = "One or more annual leave balances are missing. HR must reconcile the request." });
+
+        foreach (var allocation in allocations)
+        {
+            var annualBalance = balances.First(x => x.LeaveBalanceId == allocation.LeaveBalanceId);
+            if (annualBalance.PendingDays < allocation.AllocatedDays)
+                return Conflict(new { message = $"The pending balance for {allocation.LeaveYear} is inconsistent. HR must reconcile it." });
+            annualBalance.PendingDays -= allocation.AllocatedDays;
+            annualBalance.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var before = new
+        {
+            leaveRequest.Status,
+            PendingDaysByYear = balances.Select(x => new { x.Year, x.PendingDays }).ToList()
+        };
         leaveRequest.Status = "cancelled";
         leaveRequest.DecisionComment = request?.Reason?.Trim();
         leaveRequest.UpdatedAt = DateTime.UtcNow;
@@ -493,7 +521,11 @@ public sealed class LeaveController : BaseApiController
 
         await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, "CANCEL", "LeaveRequest", leaveRequestId,
             before: before,
-            after: new { leaveRequest.Status, balance.PendingDays });
+            after: new
+            {
+                leaveRequest.Status,
+                PendingDaysByYear = balances.Select(x => new { x.Year, x.PendingDays }).ToList()
+            });
         return Ok(new { leaveRequest.LeaveRequestId, leaveRequest.Status });
     }
 
