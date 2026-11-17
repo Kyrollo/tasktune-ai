@@ -30,7 +30,9 @@ export default function ProjectDetails() {
             map[u.userId ?? u.id] = u.fullName ?? u.name ?? 'Unknown';
           });
           setUsersMap(map);
-        } catch { }
+        } catch (err) {
+          console.error('Failed to load project members:', err);
+        }
       } catch (err) {
         console.error('Failed to load project details:', err);
       } finally {
