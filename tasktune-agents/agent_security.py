@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-import hmac
 import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-
-def is_valid_service_key(expected: str, supplied: str) -> bool:
-    """Validate configured/supplied keys without timing-sensitive equality."""
-    return (
-        len(expected.encode("utf-8")) >= 32
-        and bool(supplied)
-        and hmac.compare_digest(expected, supplied)
-    )
+from service_auth import is_valid_service_key
 
 
 def add_agent_security(app: FastAPI) -> None:

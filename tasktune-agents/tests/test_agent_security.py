@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent_security import is_valid_service_key
+from service_auth import is_valid_service_key
 
 
 class AgentServiceKeyTests(unittest.TestCase):
