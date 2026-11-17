@@ -67,6 +67,8 @@ public class ChatbotController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
 
+        if (request?.Title?.Length > 100)
+            return BadRequest(new { message = "Thread title cannot exceed 100 characters." });
         if (request?.RelatedTaskId is int relatedTaskId &&
             !await _db.Tasks.AnyAsync(t => t.TaskId == relatedTaskId))
             return NotFound(new { message = "The selected task was not found in your company." });
@@ -144,7 +146,8 @@ public class ChatbotController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
-        if (string.IsNullOrWhiteSpace(request.Content)) return BadRequest(new { message = "Message content is required." });
+        if (string.IsNullOrWhiteSpace(request.Content) || request.Content.Length > 8000)
+            return BadRequest(new { message = "Message content must be between 1 and 8000 characters." });
 
         var thread = await _db.ChatThreads.FirstOrDefaultAsync(t => t.ThreadId == threadId && t.UserId == userId.Value);
         if (thread == null) return NotFound();
@@ -407,17 +410,35 @@ public class ChatbotController : BaseApiController
 
         if (user.Role == 0)
         {
-            taskQuery = taskQuery.Where(t => t.AssignedTo == user.UserId);
-            projectQuery = projectQuery.Where(p => p.Tasks.Any(t => t.AssignedTo == user.UserId));
+            taskQuery = taskQuery.Where(t => t.AssignedTo == user.UserId || t.CreatedBy == user.UserId);
+            projectQuery = projectQuery.Where(p => p.ManagerId == user.UserId ||
+                p.Tasks.Any(t => t.AssignedTo == user.UserId || t.CreatedBy == user.UserId));
             userQuery = userQuery.Where(u => u.UserId == user.UserId);
             evaluationQuery = evaluationQuery.Where(e => e.EvaluatedUserId == user.UserId);
         }
-        else if (user.Role == 1)
+        else if (user.Role is 1 or 2)
         {
-            taskQuery = taskQuery.Where(t => t.CreatedBy == user.UserId || t.AssignedToNavigation.DepartmentId == user.DepartmentId);
-            projectQuery = projectQuery.Where(p => p.ManagerId == user.UserId || p.Tasks.Any(t => t.CreatedBy == user.UserId || t.AssignedToNavigation.DepartmentId == user.DepartmentId));
-            userQuery = userQuery.Where(u => u.DepartmentId == user.DepartmentId);
-            evaluationQuery = evaluationQuery.Where(e => e.EvaluatedUser.DepartmentId == user.DepartmentId);
+            taskQuery = user.DepartmentId.HasValue
+                ? taskQuery.Where(t => t.Project.ManagerId == user.UserId ||
+                    t.CreatedBy == user.UserId || t.AssignedTo == user.UserId ||
+                    t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value)
+                : taskQuery.Where(t => t.Project.ManagerId == user.UserId ||
+                    t.CreatedBy == user.UserId || t.AssignedTo == user.UserId);
+
+            projectQuery = user.DepartmentId.HasValue
+                ? projectQuery.Where(p => p.ManagerId == user.UserId ||
+                    p.Tasks.Any(t => t.CreatedBy == user.UserId || t.AssignedTo == user.UserId ||
+                        t.AssignedToNavigation.DepartmentId == user.DepartmentId.Value))
+                : projectQuery.Where(p => p.ManagerId == user.UserId ||
+                    p.Tasks.Any(t => t.CreatedBy == user.UserId || t.AssignedTo == user.UserId));
+
+            userQuery = user.DepartmentId.HasValue
+                ? userQuery.Where(u => u.DepartmentId == user.DepartmentId.Value)
+                : userQuery.Where(u => u.UserId == user.UserId);
+
+            evaluationQuery = user.DepartmentId.HasValue
+                ? evaluationQuery.Where(e => e.EvaluatedUser.DepartmentId == user.DepartmentId.Value)
+                : evaluationQuery.Where(e => e.EvaluatedUserId == user.UserId);
         }
         else if (user.Role == 3)
         {
@@ -472,10 +493,15 @@ public class ChatbotController : BaseApiController
                 e.CreatedAt))
             .ToListAsync();
 
-        var reports = await _db.Reports
-            .Where(r => r.CompanyId == companyId)
+        var reportsQuery = _db.Reports.Where(r => r.CompanyId == companyId);
+        if (user.Role == 0)
+            reportsQuery = reportsQuery.Where(_ => false);
+        else if (user.Role is 1 or 2)
+            reportsQuery = reportsQuery.Where(r => r.GeneratedBy == user.UserId);
+
+        var reports = await reportsQuery
             .OrderByDescending(r => r.GeneratedAt)
-            .Take(user.Role == 0 ? 0 : 10)
+            .Take(10)
             .Select(r => new ReportScopeItem(
                 r.ReportId,
                 r.MetadataJson,
