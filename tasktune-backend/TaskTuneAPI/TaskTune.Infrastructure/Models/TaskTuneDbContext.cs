@@ -621,20 +621,14 @@ public partial class TaskTuneDbContext : DbContext
         // Tenant isolation is enforced at the persistence boundary. A missing tenant context
         // intentionally hides all tenant-owned data instead of granting global access.
         modelBuilder.Entity<Company>().HasQueryFilter(e => CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
-        modelBuilder.Entity<User>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && (!e.DepartmentId.HasValue || e.Department.CompanyId == CurrentTenantId.Value)
-            && (!e.PositionId.HasValue || e.Position.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<Department>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && (!e.ParentDepartmentId.HasValue || e.ParentDepartment.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<Position>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && e.Department.CompanyId == CurrentTenantId.Value
-            && (!e.ReportsToPositionId.HasValue || e.ReportsToPosition.CompanyId == CurrentTenantId.Value));
-        modelBuilder.Entity<Project>().HasQueryFilter(e => CurrentTenantId.HasValue
-            && e.CompanyId == CurrentTenantId.Value
-            && e.Manager.CompanyId == CurrentTenantId.Value);
+        modelBuilder.Entity<User>().HasQueryFilter(e =>
+            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+        modelBuilder.Entity<Department>().HasQueryFilter(e =>
+            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+        modelBuilder.Entity<Position>().HasQueryFilter(e =>
+            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
+        modelBuilder.Entity<Project>().HasQueryFilter(e =>
+            CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
         modelBuilder.Entity<RolePermission>().HasQueryFilter(e => CurrentTenantId.HasValue && e.CompanyId == CurrentTenantId.Value);
         modelBuilder.Entity<Report>().HasQueryFilter(e => CurrentTenantId.HasValue
             && e.CompanyId == CurrentTenantId.Value
