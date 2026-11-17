@@ -274,7 +274,7 @@ public sealed class LeaveController : BaseApiController
         var overlaps = await _db.LeaveRequests.AnyAsync(x =>
             x.CompanyId == companyId.Value &&
             x.UserId == userId.Value &&
-            x.Status is "pending" or "approved" &&
+            (x.Status == "pending" || x.Status == "approved") &&
             x.StartDate <= request.EndDate &&
             x.EndDate >= request.StartDate);
         if (overlaps)
