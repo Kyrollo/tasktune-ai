@@ -37,6 +37,7 @@ export default function LeaveCenter() {
   const [requests, setRequests] = useState([]);
   const [inbox, setInbox] = useState([]);
   const [holidays, setHolidays] = useState([]);
+  const [calendarSettings, setCalendarSettings] = useState({ weekendDays: [0, 6] });
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +81,7 @@ export default function LeaveCenter() {
         leaveService.getMyBalances(year),
         leaveService.getMyRequests(1, 100),
         leaveService.getHolidays(year),
+        leaveService.getCalendarSettings(),
       ];
       if (canReview) baseCalls.push(leaveService.getApprovalInbox(1, 100));
       if (canManage) baseCalls.push(userService.getUsers(1, 100));
@@ -89,7 +91,8 @@ export default function LeaveCenter() {
       setBalances(results[1].data?.items || []);
       setRequests(results[2].data?.items || []);
       setHolidays(results[3].data?.items || []);
-      let cursor = 4;
+      setCalendarSettings({ weekendDays: results[4].data?.weekendDays || [0, 6] });
+      let cursor = 5;
       setInbox(canReview ? (results[cursor++].data?.items || []) : []);
       const directory = canManage ? results[cursor]?.data : null;
       const directoryItems = Array.isArray(directory) ? directory : directory?.items || [];
@@ -226,6 +229,22 @@ export default function LeaveCenter() {
     }
   };
 
+
+  const saveCalendarSettings = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      await leaveService.updateCalendarSettings(calendarSettings.weekendDays);
+      setSuccess('Company work week saved. New requests will use these weekend days.');
+      await load(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to save the company work calendar.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const saveHoliday = async (event) => {
     event.preventDefault();
     setSubmitting(true);
@@ -324,7 +343,7 @@ export default function LeaveCenter() {
               <Button type="submit" disabled={submitting || types.length === 0} className="w-full">
                 {submitting ? 'Submitting…' : 'Submit request'}
               </Button>
-              <p className="text-xs text-text-muted">Working days exclude Saturday, Sunday and configured company holidays. Requests can span calendar years when HR has allocated balances for each affected year.</p>
+              <p className="text-xs text-text-muted">Working days use your company weekend settings and configured holidays. Requests can span calendar years when HR has allocated balances for each affected year.</p>
             </form>
           </Card>
 
@@ -462,7 +481,7 @@ export default function LeaveCenter() {
               <span className="text-xs text-text-muted">{showSetup ? 'Hide' : 'Show setup'}</span>
             </button>
             {showSetup && (
-              <div className="grid lg:grid-cols-3 gap-5 mt-5">
+              <div className="grid lg:grid-cols-2 xl:grid-cols-4 gap-5 mt-5">
                 <form className="space-y-3" onSubmit={saveLeaveType}>
                   <h3 className="text-sm font-semibold text-text-primary">Create leave type</h3>
                   <input required maxLength={50} placeholder="Code (e.g. parental)" value={typeForm.code}
@@ -504,6 +523,37 @@ export default function LeaveCenter() {
                     onChange={(event) => setBalanceForm((current) => ({ ...current, carriedOverDays: event.target.value }))}
                     className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text-primary" />
                   <Button type="submit" disabled={submitting || employees.length === 0}>Save balance</Button>
+                </form>
+
+
+                <form className="space-y-3" onSubmit={saveCalendarSettings}>
+                  <h3 className="text-sm font-semibold text-text-primary">Work week</h3>
+                  <p className="text-xs text-text-muted">Select the non-working days used by leave calculations.</p>
+                  {[
+                    { value: 0, label: 'Sunday' },
+                    { value: 1, label: 'Monday' },
+                    { value: 2, label: 'Tuesday' },
+                    { value: 3, label: 'Wednesday' },
+                    { value: 4, label: 'Thursday' },
+                    { value: 5, label: 'Friday' },
+                    { value: 6, label: 'Saturday' },
+                  ].map((day) => (
+                    <label key={day.value} className="flex items-center gap-2 text-sm text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={calendarSettings.weekendDays.includes(day.value)}
+                        onChange={(event) => setCalendarSettings((current) => ({
+                          weekendDays: event.target.checked
+                            ? [...current.weekendDays, day.value].sort((a, b) => a - b)
+                            : current.weekendDays.filter((value) => value !== day.value),
+                        }))}
+                      />
+                      {day.label}
+                    </label>
+                  ))}
+                  <Button type="submit" disabled={submitting || calendarSettings.weekendDays.length === 0 || calendarSettings.weekendDays.length > 3}>
+                    Save work week
+                  </Button>
                 </form>
 
                 <form className="space-y-3" onSubmit={saveHoliday}>
