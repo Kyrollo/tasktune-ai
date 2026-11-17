@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.IdentityModel.Tokens.Jwt;
 using TaskTune.API.Middleware;
+using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 using TaskTune.Application.Interfaces;
 using TaskTune.Infrastructure.Services;
