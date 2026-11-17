@@ -143,7 +143,9 @@ public abstract class BaseApiController : ControllerBase
             .ThenByDescending(p => p.CreatedAt)
             .ToListAsync();
 
-        var exact = overrides.FirstOrDefault(p => p.ScopeResourceId == scopeResourceId);
+        var exact = scopeResourceId.HasValue
+            ? overrides.FirstOrDefault(p => p.ScopeResourceId == scopeResourceId.Value)
+            : null;
         if (exact != null) return exact.CanPerform;
 
         var broad = overrides.FirstOrDefault(p => p.ScopeResourceId == null);
@@ -188,15 +190,32 @@ public abstract class BaseApiController : ControllerBase
         if (effective) return true;
 
         // A scoped explicit deny must override role-derived visibility.
-        var explicitDeny = await db.UserPermissionOverrides.AsNoTracking().AnyAsync(p =>
-            p.CompanyId == companyId.Value &&
-            p.UserId == userId.Value &&
-            p.Resource == "employees" &&
-            p.Action == "read" &&
-            !p.CanPerform &&
-            (!p.ExpiresAt.HasValue || p.ExpiresAt > DateTime.UtcNow) &&
-            (p.ScopeResourceId == null || p.ScopeResourceId == targetUserId));
-        if (explicitDeny) return false;
+        var now = DateTime.UtcNow;
+        var explicitDenies = await db.UserPermissionOverrides.AsNoTracking()
+            .Where(p => p.CompanyId == companyId.Value &&
+                        p.UserId == userId.Value &&
+                        p.Resource == "employees" &&
+                        p.Action == "read" &&
+                        !p.CanPerform &&
+                        (!p.ExpiresAt.HasValue || p.ExpiresAt > now) &&
+                        (p.ScopeResourceId == null || p.ScopeResourceId == targetUserId))
+            .ToListAsync();
+
+        if (explicitDenies.Any(p => p.ScopeResourceId == targetUserId))
+            return false;
+
+        foreach (var deny in explicitDenies.Where(p => p.ScopeResourceId == null))
+        {
+            var applies = deny.Scope switch
+            {
+                "company" => true,
+                "department" => await IsSameDepartmentAsync(db, companyId.Value, userId.Value, targetUserId),
+                "team" => await IsInReportingChainAsync(db, companyId.Value, userId.Value, targetUserId),
+                "self" => targetUserId == userId.Value,
+                _ => false
+            };
+            if (applies) return false;
+        }
 
         var role = GetCurrentRole();
         if (string.Equals(role, "HR", StringComparison.OrdinalIgnoreCase) ||
