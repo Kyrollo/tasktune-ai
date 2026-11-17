@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Infrastructure.Models;
+using Task = System.Threading.Tasks.Task;
 
 namespace TaskTune.API.Support;
 

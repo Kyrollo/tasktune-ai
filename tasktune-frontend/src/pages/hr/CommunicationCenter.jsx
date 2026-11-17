@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import AppLayout from '../../layouts/AppLayout';
 import { Card, Button, Badge } from '../../components/ui';
 import { communicationService } from '../../services/communicationService';
 import { userService } from '../../services/userService';
-import { Send, Clock, Sparkles, CheckCircle2, Mail, Users } from 'lucide-react';
+import { Send, Clock, Sparkles, CheckCircle2, Mail, Users, ShieldCheck, XCircle } from 'lucide-react';
 
 const fallbackTemplates = [
   { key: '', label: 'No template', subject: '', body: '' },
@@ -14,6 +15,8 @@ const fallbackTemplates = [
 ];
 
 export default function CommunicationCenter() {
+  const { user } = useAuth();
+  const canApprove = ['CEO', 'Admin'].includes(user?.role);
   const [communications, setCommunications] = useState([]);
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -37,6 +40,9 @@ export default function CommunicationCenter() {
   const [recommending, setRecommending] = useState(false);
   const [recommendation, setRecommendation] = useState(null);
   const [error, setError] = useState('');
+  const [approvals, setApprovals] = useState([]);
+  const [approvalError, setApprovalError] = useState('');
+  const [reviewingApproval, setReviewingApproval] = useState(null);
 
   const refreshCommunications = async () => {
     const { data } = await communicationService.getCommunications();
@@ -67,6 +73,36 @@ export default function CommunicationCenter() {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!canApprove) return;
+    communicationService.getPendingApprovals()
+      .then(({ data }) => setApprovals(Array.isArray(data) ? data : data?.items ?? []))
+      .catch(() => setApprovalError('Unable to load pending communication approvals.'));
+  }, [canApprove]);
+
+  const refreshApprovals = async () => {
+    if (!canApprove) return;
+    const { data } = await communicationService.getPendingApprovals();
+    setApprovals(Array.isArray(data) ? data : data?.items ?? []);
+  };
+
+  const handleReviewApproval = async (approvalId, decision) => {
+    try {
+      setApprovalError('');
+      setReviewingApproval(approvalId);
+      if (decision === 'approve') {
+        await communicationService.approve(approvalId);
+      } else {
+        await communicationService.reject(approvalId);
+      }
+      await Promise.all([refreshApprovals(), refreshCommunications()]);
+    } catch (reviewError) {
+      setApprovalError(reviewError.response?.data?.message || 'Unable to update the approval request.');
+    } finally {
+      setReviewingApproval(null);
+    }
+  };
 
   const getSelectedUser = () => users.find((u) => String(u.userId ?? u.id) === recipient);
   const getSelectedDepartment = () => departments.find((d) => String(d.departmentId ?? d.id) === recipient);
@@ -141,7 +177,10 @@ export default function CommunicationCenter() {
       });
 
       await refreshCommunications();
-      setStats((prev) => ({ ...prev, totalSent: (prev.totalSent || 0) + 1 }));
+      setStats((prev) => ({
+        ...prev,
+        pendingApproval: (prev.pendingApproval || 0) + 1,
+      }));
       setSent(true);
       setSubject('');
       setMessage('');
@@ -182,8 +221,8 @@ export default function CommunicationCenter() {
                 <h3 className="text-lg font-semibold text-text-primary">Compose Message</h3>
                 <p className="text-sm text-text-secondary mt-1">
                   {agentInfo?.enabled
-                    ? `Agent 5 Email is connected as ${agentInfo.senderEmail || 'your configured sender'}.`
-                    : 'Agent 5 Email recommendations are available, and sent messages will still be saved in backend history.'}
+                    ? 'AI email recommendations are available. Messages are sent only after an authorized approval.'
+                    : 'Compose a message for approval. Outbound delivery remains disabled until an authorized reviewer approves it.'}
                 </p>
               </div>
               <Badge variant={agentInfo?.enabled ? 'success' : 'warning'}>
@@ -194,8 +233,8 @@ export default function CommunicationCenter() {
             {sent ? (
               <div className="text-center py-8">
                 <Send size={40} className="text-success mx-auto mb-3" />
-                <h4 className="text-lg font-medium text-text-primary mb-2">Message Sent!</h4>
-                <p className="text-sm text-text-secondary mb-4">Your communication has been delivered and logged.</p>
+                <h4 className="text-lg font-medium text-text-primary mb-2">Submitted for Approval</h4>
+                <p className="text-sm text-text-secondary mb-4">Your message is waiting for review. It will not be emailed until a different CEO or Admin approves it.</p>
                 <Button onClick={() => setSent(false)}>Compose Another</Button>
               </div>
             ) : (
@@ -354,7 +393,7 @@ export default function CommunicationCenter() {
 
                 <div className="flex items-center gap-3 flex-wrap">
                   <Button onClick={handleSend} disabled={submitting || !canSend}>
-                    <span className="flex items-center gap-2"><Send size={16} /> {submitting ? 'Sending...' : 'Send Now'}</span>
+                    <span className="flex items-center gap-2"><Send size={16} /> {submitting ? 'Submitting...' : 'Submit for Approval'}</span>
                   </Button>
                   <Button variant="secondary" onClick={handleGetRecommendation} disabled={recommending}>
                     <span className="flex items-center gap-2"><Sparkles size={16} /> {recommending ? 'Generating...' : 'AI Recommendation'}</span>
@@ -369,6 +408,56 @@ export default function CommunicationCenter() {
         </div>
 
         <div className="space-y-4">
+          {canApprove && (
+            <Card>
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck size={16} className="text-orange" />
+                <h3 className="text-base font-semibold text-text-primary">Pending Approvals</h3>
+                <Badge variant="warning">{approvals.length}</Badge>
+              </div>
+              {approvalError && <p className="text-sm text-danger mb-3">{approvalError}</p>}
+              {approvals.length === 0 ? (
+                <p className="text-sm text-text-muted">No communications are waiting for review.</p>
+              ) : (
+                <div className="space-y-3">
+                  {approvals.map(approval => (
+                    <div key={approval.approvalId} className="p-3 rounded-lg border border-border bg-bg">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-text-primary">{approval.subject || 'Communication request'}</p>
+                          <p className="text-xs text-text-muted mt-1">
+                            Requested by {approval.requestedByName || 'Company user'} · {approval.recipientCount} recipient(s)
+                          </p>
+                          <p className="text-xs text-text-muted mt-1">
+                            {approval.requestedAt ? new Date(approval.requestedAt).toLocaleString() : ''}
+                          </p>
+                          {approval.preview && (
+                            <p className="text-xs text-text-secondary mt-2 whitespace-pre-wrap line-clamp-3">{approval.preview}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 mt-3">
+                        <Button
+                          variant="secondary"
+                          disabled={reviewingApproval === approval.approvalId}
+                          onClick={() => handleReviewApproval(approval.approvalId, 'reject')}
+                        >
+                          <span className="inline-flex items-center gap-1"><XCircle size={14} /> Reject</span>
+                        </Button>
+                        <Button
+                          disabled={reviewingApproval === approval.approvalId}
+                          onClick={() => handleReviewApproval(approval.approvalId, 'approve')}
+                        >
+                          {reviewingApproval === approval.approvalId ? 'Reviewing...' : 'Approve & Queue'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+
           <Card>
             <h3 className="text-base font-semibold text-text-primary mb-3">Communication History</h3>
             <div className="space-y-3">
@@ -393,8 +482,8 @@ export default function CommunicationCenter() {
                 <p className="text-xs text-text-muted">Total Sent</p>
               </div>
               <div className="p-3 bg-bg rounded-lg text-center">
-                <p className="text-lg font-bold text-warning">{stats.scheduled || 0}</p>
-                <p className="text-xs text-text-muted">Scheduled</p>
+                <p className="text-lg font-bold text-warning">{stats.pendingApproval || 0}</p>
+                <p className="text-xs text-text-muted">Pending Approval</p>
               </div>
             </div>
           </Card>

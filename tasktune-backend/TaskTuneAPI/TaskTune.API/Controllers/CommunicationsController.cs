@@ -144,7 +144,8 @@ public class CommunicationsController : BaseApiController
         var pendingCount = await _db.CommunicationApprovals.CountAsync(item =>
             item.CompanyId == companyId.Value && item.Status == "PendingApproval");
         var queuedCount = await _db.CommunicationOutbox.CountAsync(item =>
-            item.CompanyId == companyId.Value && item.Status is "Queued" or "Processing");
+            item.CompanyId == companyId.Value &&
+            (item.Status == "Queued" || item.Status == "Processing"));
         var lastSentAt = await _db.CommunicationOutbox
             .Where(item => item.CompanyId == companyId.Value && item.Status == "Sent")
             .OrderByDescending(item => item.SentAt)
