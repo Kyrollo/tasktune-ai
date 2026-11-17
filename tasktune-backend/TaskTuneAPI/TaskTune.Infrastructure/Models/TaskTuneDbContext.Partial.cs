@@ -11,6 +11,9 @@ public partial class TaskTuneDbContext
     public virtual DbSet<LeaveRequest> LeaveRequests { get; set; }
     public virtual DbSet<CompanyHoliday> CompanyHolidays { get; set; }
     public virtual DbSet<LeaveRequestBalanceAllocation> LeaveRequestBalanceAllocations { get; set; }
+    public virtual DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
+    public virtual DbSet<CompanySubscription> CompanySubscriptions { get; set; }
+    public virtual DbSet<TenantUsageEvent> TenantUsageEvents { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -144,6 +147,56 @@ public partial class TaskTuneDbContext
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_LeaveRequestBalanceAllocations_Requests");
             entity.HasOne<LeaveBalance>().WithMany().HasForeignKey(e => e.LeaveBalanceId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_LeaveRequestBalanceAllocations_Balances");
+        });
+
+        modelBuilder.Entity<SubscriptionPlan>(entity =>
+        {
+            entity.ToTable("SubscriptionPlans");
+            entity.HasKey(e => e.SubscriptionPlanId);
+            entity.HasIndex(e => e.Code, "UQ_SubscriptionPlans_Code").IsUnique();
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(1000).IsRequired();
+            entity.Property(e => e.EnabledModulesJson).IsRequired();
+            entity.Property(e => e.BillingMode).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.CurrencyCode).HasMaxLength(3);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+        });
+
+        modelBuilder.Entity<CompanySubscription>(entity =>
+        {
+            entity.ToTable("CompanySubscriptions");
+            entity.HasKey(e => e.CompanySubscriptionId);
+            entity.HasIndex(e => e.CompanyId, "UQ_CompanySubscriptions_Company").IsUnique();
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ExternalCustomerId).HasMaxLength(200);
+            entity.Property(e => e.ExternalSubscriptionId).HasMaxLength(200);
+            entity.Property(e => e.BillingProvider).HasMaxLength(40);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_CompanySubscriptions_Companies");
+            entity.HasOne<SubscriptionPlan>().WithMany().HasForeignKey(e => e.SubscriptionPlanId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_CompanySubscriptions_Plans");
+        });
+
+        modelBuilder.Entity<TenantUsageEvent>(entity =>
+        {
+            entity.ToTable("TenantUsageEvents");
+            entity.HasKey(e => e.TenantUsageEventId);
+            entity.HasIndex(e => new { e.CompanyId, e.IdempotencyKey }, "UQ_TenantUsageEvents_Idempotency").IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.MeterKey, e.OccurredAt }, "IX_TenantUsageEvents_Meter");
+            entity.Property(e => e.MeterKey).HasMaxLength(60).IsRequired();
+            entity.Property(e => e.Quantity).HasPrecision(18, 4);
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.ResourceType).HasMaxLength(80);
+            entity.Property(e => e.ResourceId).HasMaxLength(160);
+            entity.Property(e => e.MetadataJson).HasMaxLength(4000);
+            entity.Property(e => e.OccurredAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_TenantUsageEvents_Companies");
         });
     }
 }
