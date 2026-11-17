@@ -10,6 +10,7 @@ public partial class TaskTuneDbContext
     public virtual DbSet<LeaveBalance> LeaveBalances { get; set; }
     public virtual DbSet<LeaveRequest> LeaveRequests { get; set; }
     public virtual DbSet<CompanyHoliday> CompanyHolidays { get; set; }
+    public virtual DbSet<LeaveRequestBalanceAllocation> LeaveRequestBalanceAllocations { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -128,6 +129,21 @@ public partial class TaskTuneDbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
             entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_CompanyHolidays_Companies");
+        });
+
+        modelBuilder.Entity<LeaveRequestBalanceAllocation>(entity =>
+        {
+            entity.ToTable("LeaveRequestBalanceAllocations");
+            entity.HasKey(e => e.LeaveRequestBalanceAllocationId);
+            entity.HasIndex(e => new { e.CompanyId, e.LeaveRequestId, e.LeaveBalanceId }, "UQ_LeaveRequestBalanceAllocations").IsUnique();
+            entity.Property(e => e.AllocatedDays).HasPrecision(8, 2);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(SYSUTCDATETIME())");
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_LeaveRequestBalanceAllocations_Companies");
+            entity.HasOne<LeaveRequest>().WithMany().HasForeignKey(e => e.LeaveRequestId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_LeaveRequestBalanceAllocations_Requests");
+            entity.HasOne<LeaveBalance>().WithMany().HasForeignKey(e => e.LeaveBalanceId)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_LeaveRequestBalanceAllocations_Balances");
         });
     }
 }
