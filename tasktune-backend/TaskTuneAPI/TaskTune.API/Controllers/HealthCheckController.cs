@@ -12,28 +12,52 @@ public class HealthCheckController : ControllerBase
 
     public HealthCheckController(TaskTuneDbContext db) => _db = db;
 
-    [HttpGet]
-    public async Task<IActionResult> Check()
+    // Liveness must not depend on SQL Server or another downstream service.
+    [HttpGet("live")]
+    public IActionResult Live() => Ok(new
+    {
+        status = "Healthy",
+        timestamp = DateTime.UtcNow
+    });
+
+    // Readiness is dependency-aware and is suitable for traffic-routing probes.
+    [HttpGet("ready")]
+    public async Task<IActionResult> Ready(CancellationToken cancellationToken)
     {
         try
         {
-            var canConnect = await _db.Database.CanConnectAsync();
+            var canConnect = await _db.Database.CanConnectAsync(cancellationToken);
+            if (!canConnect)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    status = "Degraded",
+                    timestamp = DateTime.UtcNow
+                });
+            }
+
             return Ok(new
             {
-                status = canConnect ? "Healthy" : "Degraded",
-                database = canConnect,
+                status = "Healthy",
                 timestamp = DateTime.UtcNow
             });
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return StatusCode(503, new
+            throw;
+        }
+        catch
+        {
+            // Do not expose connection strings, provider errors, or infrastructure details.
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
             {
-                status = "unhealthy",
-                database = false,
-                error = "Database connectivity check failed.",
+                status = "Unhealthy",
                 timestamp = DateTime.UtcNow
             });
         }
     }
+
+    // Backward-compatible endpoint; preserve the existing database readiness semantics.
+    [HttpGet]
+    public Task<IActionResult> Check(CancellationToken cancellationToken) => Ready(cancellationToken);
 }
