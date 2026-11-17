@@ -31,6 +31,7 @@ class ChatbotAgentConfig(BaseModel):
     provider: str = "groq"
     model: str = "llama-3.3-70b-versatile"
     api_key: str | None = None
+    provider_base_url: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
 

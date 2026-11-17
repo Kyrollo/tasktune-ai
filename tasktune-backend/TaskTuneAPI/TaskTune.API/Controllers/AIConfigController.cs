@@ -26,8 +26,19 @@ public class AIConfigController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
-        var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
-        return Ok(AIConfigurationStore.ToClientResponse(config));
+        try
+        {
+            var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+            return Ok(AIConfigurationStore.ToClientResponse(config));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 
     [HttpPut("config")]
@@ -45,14 +56,33 @@ public class AIConfigController : BaseApiController
         if (incoming == null) return BadRequest(new { message = "Configuration payload is required." });
 
         var before = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
-        var saved = await AIConfigurationStore.SaveAsync(_db, companyId.Value, incoming);
+        foreach (var (key, agent) in incoming.Agents)
+        {
+            if (string.IsNullOrWhiteSpace(agent.ApiKey) &&
+                before.Agents.TryGetValue(key, out var previousAgent))
+                agent.ApiKey = previousAgent.ApiKey;
+        }
+
+        TaskTuneAIConfiguration saved;
+        try
+        {
+            saved = await AIConfigurationStore.SaveAsync(_db, companyId.Value, incoming);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
 
         _db.AIActionsLogs.Add(new AIActionsLog
         {
             ActionType = 6,
             UserId = userId.Value,
-            InputData = System.Text.Json.JsonSerializer.Serialize(before),
-            OutputData = System.Text.Json.JsonSerializer.Serialize(saved),
+            InputData = System.Text.Json.JsonSerializer.Serialize(AIConfigurationStore.ToClientResponse(before)),
+            OutputData = System.Text.Json.JsonSerializer.Serialize(AIConfigurationStore.ToClientResponse(saved)),
             ModelVersion = "ai_control_panel",
             Timestamp = DateTime.UtcNow
         });
@@ -65,8 +95,8 @@ public class AIConfigController : BaseApiController
             action: "UPDATE",
             resourceType: "AI_Config",
             resourceId: companyId.Value,
-            before: before,
-            after: saved);
+            before: AIConfigurationStore.ToClientResponse(before),
+            after: AIConfigurationStore.ToClientResponse(saved));
 
         return Ok(new
         {

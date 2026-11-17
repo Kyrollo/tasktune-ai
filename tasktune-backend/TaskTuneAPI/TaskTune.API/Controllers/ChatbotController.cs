@@ -10,13 +10,19 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/chatbot")]
+[RequireModule("ai_assistant")]
 [Authorize]
 public class ChatbotController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly TenantEntitlementService _entitlements;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public ChatbotController(TaskTuneDbContext db) => _db = db;
+    public ChatbotController(TaskTuneDbContext db, TenantEntitlementService entitlements)
+    {
+        _db = db;
+        _entitlements = entitlements;
+    }
 
     [HttpGet("threads")]
     public async Task<IActionResult> GetThreads()
@@ -134,15 +140,42 @@ public class ChatbotController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
         if (string.IsNullOrWhiteSpace(request.Content)) return BadRequest(new { message = "Message content is required." });
+        if (request.Content.Length > 16000) return BadRequest(new { message = "Message content cannot exceed 16,000 characters." });
 
         var thread = await _db.ChatThreads.FirstOrDefaultAsync(t => t.ThreadId == threadId && t.UserId == userId.Value);
         if (thread == null) return NotFound();
 
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+
         var user = await _db.Users
             .Include(u => u.Department)
             .Include(u => u.Position)
-            .FirstOrDefaultAsync(u => u.UserId == userId.Value);
+            .FirstOrDefaultAsync(u => u.UserId == userId.Value && u.CompanyId == companyId.Value && u.IsActive);
         if (user == null) return Unauthorized();
+
+        var idempotencyKey = Request.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            idempotencyKey = $"chat:{threadId}:{Guid.NewGuid():N}";
+        if (idempotencyKey.Length > 160)
+            return BadRequest(new { message = "Idempotency-Key must not exceed 160 characters." });
+
+        try
+        {
+            await _entitlements.ConsumeAiRequestAsync(
+                companyId.Value,
+                idempotencyKey,
+                "ChatMessage",
+                threadId.ToString());
+        }
+        catch (TenantEntitlementException ex)
+        {
+            return StatusCode(ex.StatusCode, new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
 
         var userMessage = new ChatMessage
         {
@@ -159,7 +192,19 @@ public class ChatbotController : BaseApiController
             thread.Title = BuildThreadTitle(request.Content);
         }
 
-        var execution = await BuildAssistantReplyAsync(user, thread, request.Content.Trim());
+        ChatExecutionResult execution;
+        try
+        {
+            execution = await BuildAssistantReplyAsync(user, thread, request.Content.Trim());
+        }
+        catch (AIServiceUnavailableException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "The AI assistant is unavailable or not configured. Your message was not processed.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
         var assistantMessage = new ChatMessage
         {
             ThreadId = threadId,
@@ -206,30 +251,25 @@ public class ChatbotController : BaseApiController
         var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId);
         var agentConfig = config.GetAgent("chat_assistant");
 
-        if (config.Enabled && config.Features.ChatAssistant && agentConfig.Enabled)
-        {
-            var sqlReply = await TryGetSqlBackedReplyAsync(user, thread, message, scope, agentConfig);
-            if (sqlReply != null)
-            {
-                return sqlReply;
-            }
+        if (!config.Enabled || !config.Features.ChatAssistant || !agentConfig.Enabled)
+            throw new AIServiceUnavailableException("The company has disabled the chatbot agent.");
 
-            var directReply = await TryGetAgentResponseAsync(BuildAgentPayload(user, thread, message, scope, null, agentConfig), agentConfig);
-            if (!string.IsNullOrWhiteSpace(directReply?.Reply))
+        var sqlReply = await TryGetSqlBackedReplyAsync(user, thread, message, scope, agentConfig);
+        if (sqlReply != null)
+            return sqlReply;
+
+        var directReply = await TryGetAgentResponseAsync(
+            BuildAgentPayload(user, thread, message, scope, null, agentConfig), agentConfig);
+        if (!string.IsNullOrWhiteSpace(directReply?.Reply))
+        {
+            return new ChatExecutionResult
             {
-                return new ChatExecutionResult
-                {
-                    Reply = directReply.Reply!,
-                    ModelVersion = agentConfig.Model
-                };
-            }
+                Reply = directReply.Reply!,
+                ModelVersion = agentConfig.Model
+            };
         }
 
-        return new ChatExecutionResult
-        {
-            Reply = BuildFallbackReply(user, thread, message, scope),
-            ModelVersion = "tasktune_ai_assistant_fallback"
-        };
+        throw new AIServiceUnavailableException("The chatbot agent did not return a valid response.");
     }
 
     private async Task<ChatExecutionResult?> TryGetSqlBackedReplyAsync(
@@ -325,6 +365,10 @@ public class ChatbotController : BaseApiController
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return null;
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
             var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
             var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
             var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);
@@ -407,6 +451,7 @@ public class ChatbotController : BaseApiController
                 provider = agentConfig.Provider,
                 model = agentConfig.Model,
                 api_key = agentConfig.ApiKey,
+                provider_base_url = agentConfig.ProviderBaseUrl,
                 temperature = agentConfig.Temperature,
                 max_tokens = agentConfig.MaxTokens
             }
@@ -461,6 +506,7 @@ public class ChatbotController : BaseApiController
         var taskQuery = _db.Tasks
             .Include(t => t.Project)
             .Include(t => t.AssignedToNavigation)
+            .Where(t => t.Project.CompanyId == companyId)
             .AsQueryable();
 
         var projectQuery = _db.Projects
@@ -693,3 +739,9 @@ public record ChatScope(
     List<EvaluationScopeItem> Evaluations,
     List<ChatReportItem> Reports,
     List<NotificationScopeItem> Notifications);
+
+
+public sealed class AIServiceUnavailableException : Exception
+{
+    public AIServiceUnavailableException(string message) : base(message) { }
+}

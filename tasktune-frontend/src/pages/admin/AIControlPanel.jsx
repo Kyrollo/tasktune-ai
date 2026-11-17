@@ -33,6 +33,8 @@ const DEFAULT_CONFIG = {
     provider: 'groq',
     model: 'llama-3.3-70b-versatile',
     apiKey: '',
+    hasApiKey: false,
+    providerBaseUrl: '',
     baseUrl: '',
     endpoint: '',
     temperature: 0.2,
@@ -55,7 +57,9 @@ function normalizeConfig(raw) {
       ...incoming,
       key: agent.key,
       name: incoming.name || agent.name,
-      apiKey: incoming.apiKey || '',
+      apiKey: '',
+      hasApiKey: !!incoming.hasApiKey,
+      providerBaseUrl: incoming.providerBaseUrl || '',
       baseUrl: incoming.baseUrl || '',
       endpoint: incoming.endpoint || '',
     };
@@ -83,6 +87,7 @@ function buildPayload(config) {
           provider: agent.provider,
           model: agent.model,
           apiKey: agent.apiKey || null,
+          providerBaseUrl: agent.providerBaseUrl || '',
           baseUrl: agent.baseUrl,
           endpoint: agent.endpoint,
           temperature: Number(agent.temperature) || 0,
@@ -254,12 +259,21 @@ export default function AIControlPanel() {
                         type="password"
                         value={agent.apiKey}
                         onChange={e => updateAgent(agent.key, 'apiKey', e.target.value)}
-                        placeholder="Enter provider API key"
+                        placeholder={agent.hasApiKey ? 'Key is saved — enter a new key to rotate it' : 'Enter provider API key'}
                         className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-orange"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-text-secondary mb-1.5">Base URL</label>
+                      <label className="block text-sm text-text-secondary mb-1.5">Provider API Base URL (optional)</label>
+                      <input
+                        value={agent.providerBaseUrl}
+                        onChange={e => updateAgent(agent.key, 'providerBaseUrl', e.target.value)}
+                        placeholder="e.g. https://api.openai.com/v1"
+                        className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-orange"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-text-secondary mb-1.5">Agent Service Base URL</label>
                       <input
                         value={agent.baseUrl}
                         onChange={e => updateAgent(agent.key, 'baseUrl', e.target.value)}
@@ -361,7 +375,7 @@ export default function AIControlPanel() {
               </div>
               <div className="flex items-center justify-between p-3 bg-bg rounded-lg">
                 <span className="text-sm text-text-secondary">Keys Configured</span>
-                <span className="text-sm text-text-primary">{config.agents.filter(agent => agent.apiKey).length}/{config.agents.length}</span>
+                <span className="text-sm text-text-primary">{config.agents.filter(agent => agent.hasApiKey || agent.apiKey).length}/{config.agents.length}</span>
               </div>
             </div>
           </Card>

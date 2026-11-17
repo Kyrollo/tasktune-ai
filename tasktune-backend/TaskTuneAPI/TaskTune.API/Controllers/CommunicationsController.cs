@@ -204,12 +204,17 @@ public class CommunicationsController : BaseApiController
                 provider = agentConfig.Provider,
                 model = agentConfig.Model,
                 api_key = agentConfig.ApiKey,
+                provider_base_url = agentConfig.ProviderBaseUrl,
                 temperature = agentConfig.Temperature,
                 max_tokens = agentConfig.MaxTokens
             }
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            var agentServiceToken = Environment.GetEnvironmentVariable("AGENT_SERVICE_TOKEN");
+            if (string.IsNullOrWhiteSpace(agentServiceToken))
+                return StatusCode(503, new { message = "AI agent service authentication is not configured." });
+            http.DefaultRequestHeaders.Add("X-Agent-Internal-Token", agentServiceToken);
         try
         {
             var agentUrl = string.IsNullOrWhiteSpace(agentConfig.BaseUrl)

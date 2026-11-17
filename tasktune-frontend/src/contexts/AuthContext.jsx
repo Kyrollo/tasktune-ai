@@ -37,6 +37,9 @@ const PAGE_NAV_MAP = {
   'AI Control':       { _default: { label: 'AI Control Panel',    path: '/admin/ai',            icon: 'Brain'         } },
   'Audit Logs':       { _default: { label: 'Audit Logs',          path: '/admin/audit',         icon: 'FileText'      } },
   Settings:           { _default: { label: 'Settings',            path: '/settings',            icon: 'Settings'      } },
+  Leave:              { _default: { label: 'Leave Management',     path: '/leave',                icon: 'CalendarDays'  } },
+  Subscription:       { _default: { label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard'    } },
+  Attendance:         { _default: { label: 'Attendance & Shifts', path: '/attendance',          icon: 'Clock3'        } },
 };
 
 const PAGE_ROUTES = {
@@ -51,9 +54,12 @@ const PAGE_ROUTES = {
   'AI Control':       { _default: ['/admin/ai'] },
   'Audit Logs':       { _default: ['/admin/audit'] },
   Settings:           { _default: ['/settings'] },
+  Leave:              { _default: ['/leave'] },
+  Subscription:       { _default: ['/admin/subscription'] },
+  Attendance:         { _default: ['/attendance'] },
 };
 
-const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/'];
+const ALWAYS_ACCESSIBLE = ['/notifications', '/directory', '/tasks/', '/profile/', '/leave', '/attendance', '/workforce', '/payroll'];
 
 const DEFAULT_ROUTE = {
   Employee: '/dashboard', Supervisor: '/supervisor', Manager: '/executive',
@@ -64,9 +70,9 @@ const FALLBACK_NAV = {
   Employee:   [{ label: 'Dashboard',          path: '/dashboard',        icon: 'LayoutDashboard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
   Supervisor: [{ label: 'Dashboard',          path: '/supervisor',       icon: 'LayoutDashboard' }, { label: 'My Tasks', path: '/dashboard', icon: 'CheckSquare' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Reports', path: '/reports', icon: 'BarChart3' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
   Manager:    [{ label: 'Executive Dashboard',path: '/executive',        icon: 'LayoutDashboard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'Reports', path: '/reports', icon: 'BarChart3' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Audit Logs', path: '/admin/audit', icon: 'FileText' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
-  CEO:        [{ label: 'Executive Dashboard',path: '/executive',        icon: 'LayoutDashboard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'Reports', path: '/reports', icon: 'BarChart3' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'AI Control Panel', path: '/admin/ai', icon: 'Brain' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Audit Logs', path: '/admin/audit', icon: 'FileText' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
+  CEO:        [{ label: 'Executive Dashboard',path: '/executive',        icon: 'LayoutDashboard' }, { label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'Reports', path: '/reports', icon: 'BarChart3' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'AI Control Panel', path: '/admin/ai', icon: 'Brain' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Audit Logs', path: '/admin/audit', icon: 'FileText' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
   HR:         [{ label: 'HR Dashboard',       path: '/hr',               icon: 'LayoutDashboard' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Reports', path: '/reports', icon: 'BarChart3' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
-  Admin:      [{ label: 'Users Management',   path: '/admin/users',      icon: 'Users'          }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'AI Control Panel', path: '/admin/ai', icon: 'Brain' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Audit Logs', path: '/admin/audit', icon: 'FileText' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
+  Admin:      [{ label: 'Users Management',   path: '/admin/users',      icon: 'Users'          }, { label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Projects', path: '/projects', icon: 'FolderKanban' }, { label: 'Tasks Management', path: '/tasks-management', icon: 'ListTodo' }, { label: 'AI Control Panel', path: '/admin/ai', icon: 'Brain' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }, { label: 'Org Directory', path: '/directory', icon: 'Building2' }, { label: 'Audit Logs', path: '/admin/audit', icon: 'FileText' }, { label: 'Notifications', path: '/notifications', icon: 'Bell' }, { label: 'Settings', path: '/settings', icon: 'Settings' }],
 };
 
 // ── nav builder ───────────────────────────────────────────────────────────────
@@ -79,7 +85,9 @@ const DB_RESOURCE_MAP = {
     'users': 'Users Management',
     'roles': 'Role Matrix',
     'audit': 'Audit Logs',
-    'ai': 'AI Control'
+    'ai': 'AI Control',
+    'leave': 'Leave',
+    'payroll': 'Payroll'
   };
 
   function buildNavFromPermissions(role, permissions) {
@@ -107,6 +115,8 @@ const DB_RESOURCE_MAP = {
   if (!addedPaths.has('/notifications'))nav.push({ label: 'Notifications',  path: '/notifications', icon: 'Bell'      });
   if (!addedPaths.has('/settings') && grantedPages.has('Settings'))
     nav.push({ label: 'Settings', path: '/settings', icon: 'Settings' });
+  if (!addedPaths.has('/leave'))
+    nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
   return nav;
 }
 
@@ -204,9 +214,9 @@ export function AuthProvider({ children }) {
       const forcedByRole = {
         Supervisor: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
         Manager: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        CEO: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+        CEO: [{ label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
         HR: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        Admin: [{ label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+        Admin: [{ label: 'Subscription & Usage', path: '/admin/subscription', icon: 'CreditCard' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
       };
       for (const item of forcedByRole[user.role] || []) {
         if (!nav.some((n) => n.path === item.path)) {
@@ -215,9 +225,17 @@ export function AuthProvider({ children }) {
           else nav.push(item);
         }
       }
+      if (!nav.some((item) => item.path === '/leave'))
+        nav.push({ label: 'Leave Management', path: '/leave', icon: 'CalendarDays' });
+      if (!nav.some((item) => item.path === '/attendance'))
+        nav.push({ label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' });
+      if (!nav.some((item) => item.path === '/workforce'))
+        nav.push({ label: 'People & Benefits', path: '/workforce', icon: 'BriefcaseBusiness' });
+      if (!nav.some((item) => item.path === '/payroll'))
+        nav.push({ label: 'Payroll', path: '/payroll', icon: 'CreditCard' });
       return nav;
     }
-    return FALLBACK_NAV[user.role] || [];
+    return [...(FALLBACK_NAV[user.role] || []), { label: 'People & Benefits', path: '/workforce', icon: 'BriefcaseBusiness' }, { label: 'Payroll', path: '/payroll', icon: 'CreditCard' }, { label: 'Leave Management', path: '/leave', icon: 'CalendarDays' }, { label: 'Attendance & Shifts', path: '/attendance', icon: 'Clock3' }];
   }, [user, permissions]);
 
   const getDefaultRoute = useCallback(() =>

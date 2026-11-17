@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 class Settings(BaseSettings):
     # Groq
-    groq_api_key: str
+    groq_api_key: str = ""
 
     # Email
     smtp_host: str = "smtp.gmail.com"

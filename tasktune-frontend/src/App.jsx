@@ -26,6 +26,11 @@ import OrgChart from './pages/shared/OrgChart';
 import EmployeeProfile from './pages/shared/EmployeeProfile';
 import Notifications from './pages/shared/Notifications';
 import Settings from './pages/shared/Settings';
+import SubscriptionOverview from './pages/admin/SubscriptionOverview';
+import AttendanceCenter from './pages/shared/AttendanceCenter';
+import LeaveCenter from './pages/shared/LeaveCenter';
+import PayrollCenter from './pages/shared/PayrollCenter';
+import HRWorkforceCenter from './pages/shared/HRWorkforceCenter';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, getDefaultRoute, canAccessRoute, permissions, permissionsLoaded } = useAuth();
@@ -81,11 +86,16 @@ export default function App() {
       <Route path="/tasks-management" element={<ProtectedRoute><TasksManagement /></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><UsersManagement /></ProtectedRoute>} />
       <Route path="/admin/ai" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><AIControlPanel /></ProtectedRoute>} />
+      <Route path="/admin/subscription" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><SubscriptionOverview /></ProtectedRoute>} />
       <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['Supervisor','Manager','HR','Admin','CEO']}><RoleMatrix /></ProtectedRoute>} />
       <Route path="/admin/audit" element={<ProtectedRoute allowedRoles={['Admin','Manager','CEO']}><AuditLogs /></ProtectedRoute>} />
       <Route path="/directory" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
       <Route path="/profile/:id" element={<ProtectedRoute><EmployeeProfile /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+      <Route path="/leave" element={<ProtectedRoute><LeaveCenter /></ProtectedRoute>} />
+      <Route path="/attendance" element={<ProtectedRoute><AttendanceCenter /></ProtectedRoute>} />
+      <Route path="/workforce" element={<ProtectedRoute><HRWorkforceCenter /></ProtectedRoute>} />
+      <Route path="/payroll" element={<ProtectedRoute><PayrollCenter /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
       {/* Fallback */}

@@ -1,0 +1,26 @@
+import api from './api';
+
+export const hrWorkforceService = {
+  getSummary: () => api.get('/hr-workforce/summary'),
+  getApplicants: (params = {}) => api.get('/hr-workforce/applicants', { params }),
+  createApplicant: (payload) => api.post('/hr-workforce/applicants', payload),
+  updateApplicantStage: (id, stage) => api.put(`/hr-workforce/applicants/${id}/stage`, { stage }),
+  getOnboarding: (params = {}) => api.get('/hr-workforce/onboarding', { params }),
+  createOnboardingTask: (payload) => api.post('/hr-workforce/onboarding', payload),
+  completeOnboardingTask: (id) => api.put(`/hr-workforce/onboarding/${id}/complete`),
+  getGoals: (params = {}) => api.get('/hr-workforce/goals', { params }),
+  createGoal: (payload) => api.post('/hr-workforce/goals', payload),
+  updateGoalProgress: (id, payload) => api.put(`/hr-workforce/goals/${id}/progress`, payload),
+  getExpenses: (params = {}) => api.get('/hr-workforce/expenses', { params }),
+  createExpense: (payload) => api.post('/hr-workforce/expenses', payload),
+  decideExpense: (id, payload) => api.post(`/hr-workforce/expenses/${id}/decision`, payload),
+  getAssets: () => api.get('/hr-workforce/assets'),
+  createAsset: (payload) => api.post('/hr-workforce/assets', payload),
+  assignAsset: (id, employeeUserId) => api.post(`/hr-workforce/assets/${id}/assign`, { employeeUserId }),
+  returnAsset: (id) => api.post(`/hr-workforce/assets/${id}/return`),
+  getBenefitPlans: () => api.get('/hr-workforce/benefits/plans'),
+  createBenefitPlan: (payload) => api.post('/hr-workforce/benefits/plans', payload),
+  getBenefitEnrollments: (params = {}) => api.get('/hr-workforce/benefits/enrollments', { params }),
+  enrollBenefit: (benefitPlanId) => api.post('/hr-workforce/benefits/enrollments', { benefitPlanId }),
+  decideBenefitEnrollment: (id, payload) => api.post(`/hr-workforce/benefits/enrollments/${id}/decision`, payload),
+};

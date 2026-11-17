@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[RequireModule("projects")]
 [Authorize]
 public class ProjectsController : BaseApiController
 {
@@ -15,19 +17,37 @@ public class ProjectsController : BaseApiController
     public ProjectsController(TaskTuneDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> GetProjects([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<IActionResult> GetProjects([FromQuery] int page = 1, [FromQuery] int pageSize = 25)
     {
         var userId = GetCurrentUserId();
-        if (userId == null) return Unauthorized("Invalid token");
-
         var companyId = GetCurrentCompanyId();
+        var role = GetCurrentRole();
+        if (userId == null || companyId == null || role == null) return Unauthorized();
+        if (page < 1 || pageSize is < 1 or > 100)
+            return BadRequest(new { message = "Page must be positive and pageSize must be between 1 and 100." });
 
-        var query = _db.Projects.AsQueryable();
+        var query = _db.Projects.AsNoTracking()
+            .Where(p => p.CompanyId == companyId.Value);
 
-        if (companyId.HasValue)
-            query = query.Where(p => p.CompanyId == companyId.Value);
-        else
-            query = query.Where(p => p.ManagerId == userId.Value);
+        if (role.Equals("Employee", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(p => p.ManagerId == userId.Value ||
+                p.Tasks.Any(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value));
+        }
+        else if (role.Equals("Supervisor", StringComparison.OrdinalIgnoreCase))
+        {
+            var departmentId = await _db.Users.AsNoTracking()
+                .Where(u => u.UserId == userId.Value && u.CompanyId == companyId.Value)
+                .Select(u => u.DepartmentId)
+                .FirstOrDefaultAsync();
+            query = query.Where(p => p.ManagerId == userId.Value ||
+                p.Tasks.Any(t => t.AssignedTo == userId.Value || t.CreatedBy == userId.Value ||
+                                 (departmentId.HasValue && t.AssignedToNavigation.DepartmentId == departmentId.Value)));
+        }
+        else if (!new[] { "Manager", "HR", "CEO", "Admin" }.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
 
         var total = await query.CountAsync();
         var items = await query
@@ -50,20 +70,29 @@ public class ProjectsController : BaseApiController
             })
             .ToListAsync();
 
-        return Ok(new { items, totalCount = total });
+        return Ok(new { items, totalCount = total, page, pageSize });
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetProject(int id)
     {
         var companyId = GetCurrentCompanyId();
-        var project = await _db.Projects
+        if (companyId == null) return Unauthorized();
+        if (!await CanViewProjectAsync(_db, id)) return NotFound();
+
+        var project = await _db.Projects.AsNoTracking()
             .Include(p => p.Manager)
             .Include(p => p.Tasks)
                 .ThenInclude(t => t.AssignedToNavigation)
-            .FirstOrDefaultAsync(p => p.ProjectId == id && (!companyId.HasValue || p.CompanyId == companyId.Value));
-
+            .FirstOrDefaultAsync(p => p.ProjectId == id && p.CompanyId == companyId.Value);
         if (project == null) return NotFound();
+
+        var visibleTasks = new List<TaskTune.Infrastructure.Models.Task>();
+        foreach (var task in project.Tasks)
+        {
+            if (await CanViewTaskAsync(_db, task.TaskId))
+                visibleTasks.Add(task);
+        }
 
         return Ok(new
         {
@@ -77,24 +106,24 @@ public class ProjectsController : BaseApiController
             project.StartDate,
             project.EndDate,
             project.CreatedAt,
-            Tasks = project.Tasks
+            Tasks = visibleTasks
                 .OrderBy(t => t.DueDate)
                 .ThenByDescending(t => t.Priority)
                 .Select(t => new
-            {
-                t.TaskId,
-                t.TaskName,
-                t.Description,
-                t.Status,
-                t.Priority,
-                t.AssignedTo,
-                AssignedToName = t.AssignedToNavigation != null
-                    ? (t.AssignedToNavigation.FullName ?? (t.AssignedToNavigation.FirstName + " " + t.AssignedToNavigation.LastName))
-                    : null,
-                t.DueDate,
-                t.StartDate,
-                t.CompletionPercentage
-            })
+                {
+                    t.TaskId,
+                    t.TaskName,
+                    t.Description,
+                    t.Status,
+                    t.Priority,
+                    t.AssignedTo,
+                    AssignedToName = t.AssignedToNavigation != null
+                        ? (t.AssignedToNavigation.FullName ?? (t.AssignedToNavigation.FirstName + " " + t.AssignedToNavigation.LastName))
+                        : null,
+                    t.DueDate,
+                    t.StartDate,
+                    t.CompletionPercentage
+                })
         });
     }
 
@@ -103,12 +132,19 @@ public class ProjectsController : BaseApiController
     public async Task<IActionResult> CreateProject([FromBody] CreateProjectDto dto)
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(dto.ProjectName) || dto.ProjectName.Length > 255)
+            return BadRequest(new { message = "Project name is required and must not exceed 255 characters." });
+        if (dto.EndDate < dto.StartDate)
+            return BadRequest(new { message = "Project end date cannot be earlier than its start date." });
+        if (!await _db.Users.AnyAsync(u => u.UserId == dto.ManagerId && u.CompanyId == companyId.Value && u.IsActive))
+            return BadRequest(new { message = "Project manager must be an active user in this company." });
 
         var project = new Project
         {
             CompanyId = companyId.Value,
-            ProjectName = dto.ProjectName,
+            ProjectName = dto.ProjectName.Trim(),
             Description = dto.Description,
             ManagerId = dto.ManagerId,
             StartDate = dto.StartDate,
@@ -119,6 +155,9 @@ public class ProjectsController : BaseApiController
         };
         _db.Projects.Add(project);
         await _db.SaveChangesAsync();
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "CREATE", "Project", project.ProjectId,
+            after: new { project.ProjectName, project.ManagerId, project.StartDate, project.EndDate });
+
         return CreatedAtAction(nameof(GetProject), new { id = project.ProjectId }, new
         {
             project.ProjectId,
@@ -134,16 +173,29 @@ public class ProjectsController : BaseApiController
     [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
     public async Task<IActionResult> UpdateProject(int id, [FromBody] CreateProjectDto dto)
     {
-        var project = await _db.Projects.FindAsync(id);
-        if (project == null) return NotFound();
+        var companyId = GetCurrentCompanyId();
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
 
-        project.ProjectName = dto.ProjectName;
+        var project = await _db.Projects
+            .FirstOrDefaultAsync(p => p.ProjectId == id && p.CompanyId == companyId.Value);
+        if (project == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(dto.ProjectName) || dto.ProjectName.Length > 255 || dto.EndDate < dto.StartDate)
+            return BadRequest(new { message = "Project name and date range are invalid." });
+        if (!await _db.Users.AnyAsync(u => u.UserId == dto.ManagerId && u.CompanyId == companyId.Value && u.IsActive))
+            return BadRequest(new { message = "Project manager must be an active user in this company." });
+
+        var before = new { project.ProjectName, project.ManagerId, project.StartDate, project.EndDate };
+        project.ProjectName = dto.ProjectName.Trim();
         project.Description = dto.Description;
         project.ManagerId = dto.ManagerId;
         project.StartDate = dto.StartDate;
         project.EndDate = dto.EndDate;
         project.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "UPDATE", "Project", id,
+            before: before,
+            after: new { project.ProjectName, project.ManagerId, project.StartDate, project.EndDate });
 
         return Ok(new
         {
@@ -156,13 +208,21 @@ public class ProjectsController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
+    [Authorize(Roles = "Manager,CEO,Admin")]
     public async Task<IActionResult> DeleteProject(int id)
     {
-        var project = await _db.Projects.FindAsync(id);
+        var companyId = GetCurrentCompanyId();
+        var userId = GetCurrentUserId();
+        if (companyId == null || userId == null) return Unauthorized();
+
+        var project = await _db.Projects
+            .FirstOrDefaultAsync(p => p.ProjectId == id && p.CompanyId == companyId.Value);
         if (project == null) return NotFound();
+
+        var before = new { project.ProjectName, project.ManagerId };
         _db.Projects.Remove(project);
         await _db.SaveChangesAsync();
+        await AuditLogWriter.WriteAsync(_db, HttpContext, userId, "DELETE", "Project", id, before: before);
         return NoContent();
     }
 }

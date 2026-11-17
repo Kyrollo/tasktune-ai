@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from langchain_groq import ChatGroq
+from tasktune_llm import build_chat_model
 
 from .models import (
     DetailedGuidance,
@@ -37,20 +37,13 @@ def _get_agent_config(state: TaskGuidanceState) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
-def _get_llm(state: TaskGuidanceState, temperature: float = 0.4) -> ChatGroq:
-    config = _get_agent_config(state)
-    kwargs: dict[str, Any] = {
-        "model": config.get("model") or MODEL_NAME,
-        "temperature": config.get("temperature", temperature),
-    }
-
-    if config.get("api_key"):
-        kwargs["api_key"] = config["api_key"]
-
-    if config.get("max_tokens"):
-        kwargs["max_tokens"] = config["max_tokens"]
-
-    return ChatGroq(**kwargs)
+def _get_llm(state: TaskGuidanceState, temperature: float = 0.4):
+    return build_chat_model(
+        _get_agent_config(state),
+        fallback_model=MODEL_NAME,
+        temperature=temperature,
+        max_tokens=2048,
+    )
 
 
 def _task_vars(state: TaskGuidanceState) -> dict[str, Any]:

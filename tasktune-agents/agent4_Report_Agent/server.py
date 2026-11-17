@@ -19,7 +19,8 @@ from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import hmac
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -38,6 +39,15 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_AGENT_SERVICE_TOKEN = os.environ.get("AGENT_SERVICE_TOKEN", "")
+
+async def require_agent_service_token(x_agent_internal_token: str = Header(default="")):
+    if not _AGENT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Agent service authentication is not configured.")
+    if not hmac.compare_digest(x_agent_internal_token, _AGENT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized agent service caller.")
+
 
 
 # ── Request / Response models ──────────────────────────────────────────
@@ -62,7 +72,7 @@ class ReportRequest(BaseModel):
     start_date: str = ""
     end_date: str = ""
     department: str = "All Departments"
-    company_id: str = "1"
+    company_id: str = Field(min_length=1)
     manager_id: str = ""
     manager_name: str = ""
     manager_email: str = ""
@@ -116,15 +126,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 def _run_agent_sync(initial_state: dict) -> dict:
     """Run the LangGraph agent synchronously (handles the event loop)."""
     agent = build_progress_agent()
@@ -144,6 +145,7 @@ def _run_agent_sync(initial_state: dict) -> dict:
     response_model=ReportResponse,
     summary="Generate AI-powered report",
     tags=["Report Agent"],
+    dependencies=[Depends(require_agent_service_token)],
 )
 async def generate_report(request: ReportRequest):
     """Accept task data from the C# backend, run the LangGraph pipeline, return structured report."""
@@ -197,40 +199,10 @@ async def generate_report(request: ReportRequest):
             )
 
         
-        if not request.tasks or (result.get("error") and not result.get("report")):
-            logger.info("Providing comprehensive executive report fallback...")
-            return ReportResponse(
-                title=f"Executive AI Performance Report — {request.department}",
-                generated_at=str(date.today()),
-                run_date=request.run_date or str(date.today()),
-                report_type=request.report_type or "performance",
-                total_tasks=8,
-                total_employees=5,
-                avg_completion=74.5,
-                employees_summary=[
-                    EmployeeSummaryResponse(employee_id="1", employee_name="Ahmed Hassan", total_tasks=3, avg_completion=85.0, on_time_tasks=3, late_tasks=0, at_risk=False),
-                    EmployeeSummaryResponse(employee_id="2", employee_name="Sara Ibrahim", total_tasks=2, avg_completion=70.0, on_time_tasks=2, late_tasks=0, at_risk=False),
-                    EmployeeSummaryResponse(employee_id="3", employee_name="Omar Khaled", total_tasks=2, avg_completion=65.0, on_time_tasks=1, late_tasks=1, at_risk=False),
-                    EmployeeSummaryResponse(employee_id="4", employee_name="Mona Saeed", total_tasks=1, avg_completion=90.0, on_time_tasks=1, late_tasks=0, at_risk=False),
-                ],
-                ai_analysis=AIAnalysisResponse(
-                    summary="Overall organizational health is strong with 74.5% sprint completion. Critical path initiatives in Frontend & AI Orchestration remain on schedule.",
-                    at_risk_employees=[],
-                    predictions={"forecasted_sprint_completion": "96.2%", "estimated_delivery": "Within SLA"},
-                    recommendations=[
-                        "Maintain current CI/CD deployment cadence",
-                        "Review payment API comparison findings in Thursday architecture sync"
-                    ],
-                    overall_health="good"
-                ),
-                email_sent=False,
-                chart_data=[
-                    {"dept": "Engineering", "score": 88.0, "tasks": 4, "late": 0},
-                    {"dept": "Product", "score": 75.0, "tasks": 2, "late": 0},
-                    {"dept": "Operations", "score": 82.0, "tasks": 2, "late": 1},
-                ]
-            )
-
+        if not request.tasks:
+            raise HTTPException(status_code=422, detail="No real task records were supplied; a report cannot be generated.")
+        if result.get("error") and not result.get("report"):
+            raise HTTPException(status_code=503, detail="Report generation failed; no report was created.")
 
         report = result["report"]
         analysis = result["analysis"]
@@ -288,7 +260,7 @@ async def generate_report(request: ReportRequest):
         raise
     except Exception as exc:
         logger.exception("Report generation failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=503, detail="Report generation is temporarily unavailable.") from exc
 
 
 @app.get("/api/health", tags=["Health"])

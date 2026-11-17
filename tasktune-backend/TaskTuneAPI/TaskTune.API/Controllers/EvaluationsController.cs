@@ -20,7 +20,21 @@ public class EvaluationsController : BaseApiController
     public async Task<IActionResult> CreateEvaluation([FromBody] CreateEvaluationDto dto)
     {
         var evaluatorId = GetCurrentUserId();
-        if (evaluatorId == null) return Unauthorized();
+        var companyId = GetCurrentCompanyId();
+        if (evaluatorId == null || companyId == null) return Unauthorized();
+        if (dto.OverallScore is < 0 or > 100 ||
+            dto.QualityScore is < 0 or > 100 ||
+            dto.TimelinessScore is < 0 or > 100 ||
+            dto.CollaborationScore is < 0 or > 100)
+            return BadRequest(new { message = "All evaluation scores must be between 0 and 100." });
+
+        var task = await _db.Tasks
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(t => t.TaskId == dto.TaskId && t.Project.CompanyId == companyId.Value);
+        if (task == null || task.AssignedTo != dto.EvaluatedUserId)
+            return BadRequest(new { message = "The task and evaluated employee must belong to the current company and match the task assignee." });
+        if (!await CanViewEmployeeAsync(_db, dto.EvaluatedUserId))
+            return Forbid();
 
         var eval = new Evaluation
         {
@@ -52,11 +66,17 @@ public class EvaluationsController : BaseApiController
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetEvaluation(int id)
     {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+
         var eval = await _db.Evaluations
             .Include(e => e.EvaluatedUser)
             .Include(e => e.Evaluator)
-            .FirstOrDefaultAsync(e => e.EvaluationId == id);
-        if (eval == null) return NotFound();
+            .Include(e => e.Task)
+                .ThenInclude(t => t.Project)
+            .FirstOrDefaultAsync(e => e.EvaluationId == id &&
+                                      e.Task.Project.CompanyId == companyId.Value);
+        if (eval == null || !await CanViewEmployeeAsync(_db, eval.EvaluatedUserId)) return NotFound();
 
         return Ok(new
         {
@@ -82,9 +102,15 @@ public class EvaluationsController : BaseApiController
     [HttpGet("user/{userId:int}")]
     public async Task<IActionResult> GetUserEvaluations(int userId)
     {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+        if (!await CanViewEmployeeAsync(_db, userId)) return NotFound();
+
         var evals = await _db.Evaluations
             .Include(e => e.Task)
-            .Where(e => e.EvaluatedUserId == userId)
+            .Where(e => e.EvaluatedUserId == userId &&
+                        e.EvaluatedUser.CompanyId == companyId.Value &&
+                        e.Task.Project.CompanyId == companyId.Value)
             .OrderByDescending(e => e.CreatedAt)
             .Select(e => new
             {
@@ -118,9 +144,14 @@ public class EvaluationsController : BaseApiController
             return Ok(await GetReviewerEvaluationsAsync(userId.Value, role));
         }
 
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+
         var evals = await _db.Evaluations
             .Include(e => e.Task)
-            .Where(e => e.EvaluatedUserId == userId.Value)
+            .Where(e => e.EvaluatedUserId == userId.Value &&
+                        e.EvaluatedUser.CompanyId == companyId.Value &&
+                        e.Task.Project.CompanyId == companyId.Value)
             .OrderByDescending(e => e.CreatedAt)
             .Select(e => new
             {
@@ -146,25 +177,33 @@ public class EvaluationsController : BaseApiController
 
     private async Task<List<object>> GetReviewerEvaluationsAsync(int reviewerId, string? role)
     {
-        var reviewer = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == reviewerId);
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return [];
+
+        var reviewer = await _db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == reviewerId &&
+                                      u.CompanyId == companyId.Value &&
+                                      u.IsActive);
         if (reviewer == null) return [];
+
+        var companyUsers = await _db.Users.AsNoTracking()
+            .Where(u => u.CompanyId == companyId.Value && u.IsActive)
+            .Select(u => u.UserId)
+            .ToListAsync();
+
+        var visibleEmployeeIds = new HashSet<int>();
+        foreach (var employeeId in companyUsers)
+        {
+            if (await CanViewEmployeeAsync(_db, employeeId))
+                visibleEmployeeIds.Add(employeeId);
+        }
 
         var tasksQuery = _db.Tasks
             .Include(t => t.AssignedToNavigation)
                 .ThenInclude(u => u.Department)
             .Include(t => t.Project)
-            .AsQueryable();
-
-        tasksQuery = role switch
-        {
-            "Supervisor" when reviewer.DepartmentId.HasValue => tasksQuery.Where(t =>
-                t.CreatedBy == reviewerId ||
-                t.AssignedToNavigation.DepartmentId == reviewer.DepartmentId),
-            "Supervisor" => tasksQuery.Where(t => t.CreatedBy == reviewerId || t.AssignedTo == reviewerId),
-            "Manager" => tasksQuery.Where(t => t.Project.ManagerId == reviewerId || t.CreatedBy == reviewerId || t.Project.CompanyId == reviewer.CompanyId),
-            "CEO" or "Admin" => tasksQuery.Where(t => t.Project.CompanyId == reviewer.CompanyId),
-            _ => tasksQuery.Where(t => t.AssignedTo == reviewerId || t.CreatedBy == reviewerId),
-        };
+            .Where(t => t.Project.CompanyId == companyId.Value &&
+                        visibleEmployeeIds.Contains(t.AssignedTo));
 
         var candidateTasks = await tasksQuery
             .Where(t => t.CompletionPercentage >= 100 || t.Status == 2 || t.Status == 3)
@@ -185,7 +224,9 @@ public class EvaluationsController : BaseApiController
 
         var taskIds = candidateTasks.Select(t => t.TaskId).ToList();
         var existingEvaluations = await _db.Evaluations
-            .Where(e => e.EvaluatorId == reviewerId && taskIds.Contains(e.TaskId))
+            .Where(e => e.EvaluatorId == reviewerId &&
+                        taskIds.Contains(e.TaskId) &&
+                        e.Task.Project.CompanyId == companyId.Value)
             .Select(e => new
             {
                 e.EvaluationId,
@@ -262,4 +303,5 @@ public class EvaluationsController : BaseApiController
             .Select(entry => entry.item)
             .ToList();
     }
+
 }

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Security.Cryptography;
+using System.Text;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Support;
@@ -130,6 +132,7 @@ public class AIAgentConfig
     public string Provider { get; set; } = "groq";
     public string Model { get; set; } = "llama-3.3-70b-versatile";
     public string? ApiKey { get; set; }
+    public string ProviderBaseUrl { get; set; } = "";
     public string BaseUrl { get; set; } = "";
     public string Endpoint { get; set; } = "";
     public double Temperature { get; set; } = 0.2;
@@ -185,7 +188,21 @@ public static class AIConfigurationStore
             }
         }
 
-        root["aiConfig"] = JsonSerializer.SerializeToNode(config, JsonOptions);
+        var configNode = JsonSerializer.SerializeToNode(config, JsonOptions)?.AsObject() ?? [];
+        if (configNode["agents"] is JsonObject agentNodes)
+        {
+            foreach (var agentNode in agentNodes)
+            {
+                if (agentNode.Value is JsonObject agentObject &&
+                    agentObject["apiKey"] is JsonValue apiKeyValue &&
+                    apiKeyValue.TryGetValue<string>(out var plainApiKey) &&
+                    !string.IsNullOrWhiteSpace(plainApiKey))
+                {
+                    agentObject["apiKey"] = EncryptApiKey(plainApiKey);
+                }
+            }
+        }
+        root["aiConfig"] = configNode;
         company.SettingsJson = root.ToJsonString(JsonOptions);
 
         await db.SaveChangesAsync();
@@ -207,7 +224,8 @@ public static class AIConfigurationStore
                     kvp.Value.Name,
                     kvp.Value.Provider,
                     kvp.Value.Model,
-                    kvp.Value.ApiKey,
+                    kvp.Value.ProviderBaseUrl,
+                    HasApiKey = !string.IsNullOrWhiteSpace(kvp.Value.ApiKey),
                     kvp.Value.BaseUrl,
                     kvp.Value.Endpoint,
                     kvp.Value.Temperature,
@@ -235,12 +253,74 @@ public static class AIConfigurationStore
             }
 
             Normalize(config, companyId);
+            foreach (var agent in config.Agents.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(agent.ApiKey))
+                    agent.ApiKey = DecryptApiKey(agent.ApiKey);
+            }
             return config;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (CryptographicException)
+        {
+            throw new InvalidOperationException("An encrypted AI provider key could not be decrypted. Verify AI_PROVIDER_ENCRYPTION_KEY and restore the original key if it changed.");
         }
         catch
         {
             return null;
         }
+    }
+
+    private const string EncryptedApiKeyPrefix = "enc:v1:";
+
+    private static byte[] GetApiKeyEncryptionKey()
+    {
+        var secret = Environment.GetEnvironmentVariable("AI_PROVIDER_ENCRYPTION_KEY");
+        if (string.IsNullOrWhiteSpace(secret) || Encoding.UTF8.GetByteCount(secret) < 32)
+            throw new InvalidOperationException("AI_PROVIDER_ENCRYPTION_KEY must be configured with at least 32 bytes before provider API keys can be saved or decrypted.");
+        return SHA256.HashData(Encoding.UTF8.GetBytes(secret));
+    }
+
+    private static string EncryptApiKey(string plainText)
+    {
+        var key = GetApiKeyEncryptionKey();
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var plain = Encoding.UTF8.GetBytes(plainText);
+        var cipher = new byte[plain.Length];
+        var tag = new byte[16];
+        using (var aes = new AesGcm(key, tag.Length))
+            aes.Encrypt(nonce, plain, cipher, tag);
+
+        var payload = new byte[nonce.Length + cipher.Length + tag.Length];
+        Buffer.BlockCopy(nonce, 0, payload, 0, nonce.Length);
+        Buffer.BlockCopy(cipher, 0, payload, nonce.Length, cipher.Length);
+        Buffer.BlockCopy(tag, 0, payload, nonce.Length + cipher.Length, tag.Length);
+        return EncryptedApiKeyPrefix + Convert.ToBase64String(payload);
+    }
+
+    private static string DecryptApiKey(string storedValue)
+    {
+        if (!storedValue.StartsWith(EncryptedApiKeyPrefix, StringComparison.Ordinal))
+        {
+            // Legacy plain-text values are still read for migration but are never returned to clients.
+            return storedValue;
+        }
+
+        var payload = Convert.FromBase64String(storedValue[EncryptedApiKeyPrefix.Length..]);
+        if (payload.Length < 28)
+            throw new CryptographicException("Stored AI provider key payload is invalid.");
+
+        var key = GetApiKeyEncryptionKey();
+        var nonce = payload[..12];
+        var tag = payload[^16..];
+        var cipher = payload[12..^16];
+        var plain = new byte[cipher.Length];
+        using (var aes = new AesGcm(key, tag.Length))
+            aes.Decrypt(nonce, cipher, tag, plain);
+        return Encoding.UTF8.GetString(plain);
     }
 
     private static void Normalize(TaskTuneAIConfiguration config, int companyId)
@@ -261,6 +341,7 @@ public static class AIConfigurationStore
             existing.Name = string.IsNullOrWhiteSpace(existing.Name) ? agent.Name : existing.Name;
             existing.Provider = string.IsNullOrWhiteSpace(existing.Provider) ? agent.Provider : existing.Provider;
             existing.Model = string.IsNullOrWhiteSpace(existing.Model) ? agent.Model : existing.Model;
+            existing.ProviderBaseUrl ??= "";
             existing.BaseUrl = string.IsNullOrWhiteSpace(existing.BaseUrl) ? agent.BaseUrl : existing.BaseUrl;
             existing.Endpoint = string.IsNullOrWhiteSpace(existing.Endpoint) ? agent.Endpoint : existing.Endpoint;
             existing.Temperature = existing.Temperature == 0 ? agent.Temperature : existing.Temperature;

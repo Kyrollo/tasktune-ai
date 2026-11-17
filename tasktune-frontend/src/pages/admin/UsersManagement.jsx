@@ -33,6 +33,16 @@ export default function UsersManagement() {
   const [departments, setDepartments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [permissionUser, setPermissionUser] = useState(null);
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionSaving, setPermissionSaving] = useState(false);
+  const [permissionItems, setPermissionItems] = useState([]);
+  const [permissionError, setPermissionError] = useState('');
+  const [permissionForm, setPermissionForm] = useState({
+    resource: 'employees', action: 'read', canPerform: true,
+    scope: 'selected', scopeResourceId: '', expiresAt: '', reason: '',
+  });
 
   const roles = ['All', 'Employee', 'Supervisor', 'Manager', 'CEO', 'HR', 'Admin'];
   const statusVariant = { Active: 'success', Inactive: 'danger' };
@@ -84,6 +94,80 @@ export default function UsersManagement() {
       setCreateError(err.response?.data?.message || 'Failed to create user. Please check the data and try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+
+  const loadPermissionOverrides = async (userId) => {
+    const { data } = await userService.getPermissionOverrides(userId);
+    setPermissionItems(Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const openPermissionManager = async (person) => {
+    setPermissionUser(person);
+    setPermissionOpen(true);
+    setPermissionLoading(true);
+    setPermissionError('');
+    setPermissionForm({
+      resource: 'employees', action: 'read', canPerform: true,
+      scope: 'selected', scopeResourceId: '', expiresAt: '', reason: '',
+    });
+    try {
+      await loadPermissionOverrides(person.id);
+    } catch (err) {
+      setPermissionError(err.response?.data?.message || 'Unable to load individual permissions.');
+    } finally {
+      setPermissionLoading(false);
+    }
+  };
+
+  const savePermission = async () => {
+    if (!permissionUser) return;
+    if (permissionForm.scope === 'selected' && !permissionForm.scopeResourceId) {
+      setPermissionError('Choose the employee record this permission applies to.');
+      return;
+    }
+    setPermissionSaving(true);
+    setPermissionError('');
+    try {
+      const expiresAt = permissionForm.expiresAt
+        ? new Date(`${permissionForm.expiresAt}T23:59:59.000Z`).toISOString()
+        : null;
+      await userService.savePermissionOverrides(permissionUser.id, [{
+        resource: permissionForm.resource,
+        action: permissionForm.action,
+        canPerform: permissionForm.canPerform,
+        scope: permissionForm.scope,
+        scopeResourceId: permissionForm.scope === 'selected' ? Number(permissionForm.scopeResourceId) : null,
+        expiresAt,
+        reason: permissionForm.reason.trim() || null,
+      }]);
+      await loadPermissionOverrides(permissionUser.id);
+      setPermissionError('');
+    } catch (err) {
+      setPermissionError(err.response?.data?.message || 'Unable to save the permission.');
+    } finally {
+      setPermissionSaving(false);
+    }
+  };
+
+  const removePermission = async (overrideId) => {
+    if (!permissionUser) return;
+    try {
+      await userService.deletePermissionOverride(permissionUser.id, overrideId);
+      await loadPermissionOverrides(permissionUser.id);
+    } catch (err) {
+      setPermissionError(err.response?.data?.message || 'Unable to revoke the permission.');
+    }
+  };
+
+  const handleDeactivate = async (person) => {
+    if (!window.confirm(`Deactivate ${person.name}? Their active sessions will be revoked.`)) return;
+    try {
+      await userService.deactivateUser(person.id);
+      setUsers((current) => current.filter((item) => item.id !== person.id));
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Unable to deactivate this user.');
     }
   };
 
@@ -179,10 +263,18 @@ export default function UsersManagement() {
                       >
                         <Edit size={14} />
                       </button>
-                      <button className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary">
+                      <button
+                        onClick={() => openPermissionManager(u)}
+                        title="Manage individual permissions"
+                        className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-orange"
+                      >
                         <Shield size={14} />
                       </button>
-                      <button className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-danger">
+                      <button
+                        onClick={() => handleDeactivate(u)}
+                        title="Deactivate user"
+                        className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-danger"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -296,6 +388,121 @@ export default function UsersManagement() {
               {submitting ? 'Creating...' : 'Add User'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={permissionOpen}
+        onClose={() => { setPermissionOpen(false); setPermissionUser(null); setPermissionItems([]); }}
+        title={`Individual Permissions — ${permissionUser?.name || ''}`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            These overrides apply to this account only. A selected-record override can grant or deny access to one employee page.
+            Denials take precedence over role permissions.
+          </p>
+          {permissionError && (
+            <div role="alert" className="p-3 rounded-lg border border-danger/20 bg-danger/10 text-sm text-danger">
+              {permissionError}
+            </div>
+          )}
+          {permissionLoading ? (
+            <div className="py-6 text-center text-sm text-text-secondary">Loading permissions…</div>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Module</label>
+                  <select value={permissionForm.resource} onChange={(e) => setPermissionForm((v) => ({ ...v, resource: e.target.value }))}
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                    {['employees','tasks','projects','reports','attendance','leave','payroll','hr_cases','documents','org_chart','permissions','integrations'].map((value) => <option key={value} value={value}>{value.replaceAll('_',' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Action</label>
+                  <select value={permissionForm.action} onChange={(e) => setPermissionForm((v) => ({ ...v, action: e.target.value }))}
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                    {['read','create','update','delete','approve','export','manage'].map((value) => <option key={value}>{value}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Decision</label>
+                  <select value={String(permissionForm.canPerform)} onChange={(e) => setPermissionForm((v) => ({ ...v, canPerform: e.target.value === 'true' }))}
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                    <option value="true">Grant permission</option>
+                    <option value="false">Explicitly deny permission</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Access scope</label>
+                  <select value={permissionForm.scope} onChange={(e) => setPermissionForm((v) => ({ ...v, scope: e.target.value, scopeResourceId: '' }))}
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                    <option value="self">Own record</option>
+                    <option value="team">Reporting team</option>
+                    <option value="department">Department</option>
+                    <option value="company">Entire company</option>
+                    <option value="selected">One selected employee</option>
+                  </select>
+                </div>
+                {permissionForm.scope === 'selected' && (
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">Selected employee</label>
+                    <select value={permissionForm.scopeResourceId} onChange={(e) => setPermissionForm((v) => ({ ...v, scopeResourceId: e.target.value }))}
+                      className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                      <option value="">Choose employee…</option>
+                      {users.filter((candidate) => candidate.id !== permissionUser?.id).map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>{candidate.name} — {candidate.department}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Expires on (optional)</label>
+                  <input type="date" value={permissionForm.expiresAt} onChange={(e) => setPermissionForm((v) => ({ ...v, expiresAt: e.target.value }))}
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-text-secondary mb-1">Reason / approval reference</label>
+                  <input value={permissionForm.reason} onChange={(e) => setPermissionForm((v) => ({ ...v, reason: e.target.value }))}
+                    maxLength={500} placeholder="Why is this access required?"
+                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={savePermission} disabled={permissionSaving}>
+                  {permissionSaving ? 'Saving…' : 'Save individual permission'}
+                </Button>
+              </div>
+              <div className="border-t border-border pt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Current overrides ({permissionItems.length})</h4>
+                {permissionItems.length === 0 ? (
+                  <p className="text-sm text-text-muted">No individual overrides configured. Role-level permissions apply.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {permissionItems.map((item) => (
+                      <div key={item.permissionOverrideId} className="flex items-center gap-3 p-3 bg-bg border border-border rounded-lg">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary font-medium">{item.resource} · {item.action}</p>
+                          <p className="text-xs text-text-muted">
+                            {item.scope}{item.scopeResourceId ? ` · employee #${item.scopeResourceId}` : ''}
+                            {item.expiresAt ? ` · expires ${new Date(item.expiresAt).toLocaleDateString()}` : ' · no expiry'}
+                          </p>
+                        </div>
+                        <Badge variant={item.isExpired ? 'default' : item.canPerform ? 'success' : 'danger'}>
+                          {item.isExpired ? 'Expired' : item.canPerform ? 'Granted' : 'Denied'}
+                        </Badge>
+                        <button onClick={() => removePermission(item.permissionOverrideId)} title="Revoke override"
+                          className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-danger">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </AppLayout>

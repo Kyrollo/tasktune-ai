@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
+from tasktune_llm import build_chat_model
 from pydantic import BaseModel
 
 from .models import ChatbotRequest
@@ -70,20 +70,13 @@ class ChatbotSqlAnswer(BaseModel):
     reply: str
 
 
-def _get_llm(request: ChatbotRequest, default_temperature: float = 0.2) -> ChatGroq:
-    config = request.agent_config
-    kwargs: dict[str, Any] = {
-        "model": config.model if config and config.model else MODEL_NAME,
-        "temperature": config.temperature if config and config.temperature is not None else default_temperature,
-    }
-
-    if config and config.api_key:
-        kwargs["api_key"] = config.api_key
-
-    if config and config.max_tokens:
-        kwargs["max_tokens"] = config.max_tokens
-
-    return ChatGroq(**kwargs)
+def _get_llm(request: ChatbotRequest, default_temperature: float = 0.2):
+    return build_chat_model(
+        request.agent_config,
+        fallback_model=MODEL_NAME,
+        temperature=default_temperature,
+        max_tokens=1024,
+    )
 
 
 def _truncate_items(items: list[dict[str, Any]], max_items: int = 8) -> list[dict[str, Any]]:
