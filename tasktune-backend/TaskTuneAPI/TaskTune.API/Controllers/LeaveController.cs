@@ -9,6 +9,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/leave")]
+[RequireModule("leave")]
 [Authorize]
 public sealed class LeaveController : BaseApiController
 {
