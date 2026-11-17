@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -88,6 +89,53 @@ public sealed class TenantEntitlementService
                 StatusCodes.Status429TooManyRequests);
     }
 
+
+
+    public async Task ConsumeAiRequestAsync(
+        int companyId,
+        string idempotencyKey,
+        string? resourceType = null,
+        string? resourceId = null)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        if (await _db.TenantUsageEvents.AnyAsync(e =>
+                e.CompanyId == companyId && e.IdempotencyKey == idempotencyKey))
+        {
+            await transaction.CommitAsync();
+            return;
+        }
+
+        var (_, plan) = await GetCurrentAsync(companyId);
+        if (plan.MaxMonthlyAiRequests.HasValue)
+        {
+            var now = DateTime.UtcNow;
+            var start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var end = start.AddMonths(1);
+
+            var used = await _db.TenantUsageEvents.AsNoTracking()
+                .Where(e => e.CompanyId == companyId &&
+                            e.MeterKey == "ai_request" &&
+                            e.OccurredAt >= start &&
+                            e.OccurredAt < end)
+                .SumAsync(e => (decimal?)e.Quantity) ?? 0m;
+
+            if (used >= plan.MaxMonthlyAiRequests.Value)
+                throw new TenantEntitlementException(
+                    $"The company has reached its monthly AI request limit of {plan.MaxMonthlyAiRequests.Value}. Upgrade the plan or wait for the next billing period.",
+                    StatusCodes.Status429TooManyRequests);
+        }
+
+        await RecordUsageAsync(
+            companyId,
+            "ai_request",
+            1,
+            idempotencyKey,
+            resourceType,
+            resourceId);
+
+        await transaction.CommitAsync();
+    }
 
     public async Task EnsureStorageCapacityAsync(int companyId, long incomingBytes)
     {
