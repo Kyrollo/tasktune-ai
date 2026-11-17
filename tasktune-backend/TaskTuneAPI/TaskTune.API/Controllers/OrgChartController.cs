@@ -18,7 +18,8 @@ public class OrgChartController : BaseApiController
     public async Task<IActionResult> GetOrgChart()
     {
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (companyId == null) return Unauthorized();
+        var canViewEmails = GetCurrentRole() is "HR" or "CEO" or "Admin" or "Manager";
 
         var company = await _db.Companies
             .Where(c => c.CompanyId == companyId.Value)
@@ -50,7 +51,7 @@ public class OrgChartController : BaseApiController
         {
             UserId = ceo.UserId,
             FullName = ceo.FullName ?? $"{ceo.FirstName} {ceo.LastName}",
-            Email = ceo.Email,
+            Email = canViewEmails ? ceo.Email : null,
             Position = ceo.Position?.PositionTitle ?? "CEO",
             Role = ceo.Role,
             RoleName = roleNames.GetValueOrDefault(ceo.Role, "CEO"),
@@ -95,7 +96,7 @@ public class OrgChartController : BaseApiController
                 {
                     u.UserId,
                     FullName = u.FullName ?? $"{u.FirstName} {u.LastName}",
-                    u.Email,
+                    Email = canViewEmails ? u.Email : null,
                     Position = u.Position != null ? u.Position.PositionTitle : null,
                     Role = u.Role,
                     RoleName = roleNames.GetValueOrDefault(u.Role, "Employee"),
@@ -116,7 +117,7 @@ public class OrgChartController : BaseApiController
                         {
                             u.UserId,
                             FullName = u.FullName ?? $"{u.FirstName} {u.LastName}",
-                            u.Email,
+                            Email = canViewEmails ? u.Email : null,
                             Position = p.PositionTitle,
                             Role = u.Role,
                             RoleName = roleNames.GetValueOrDefault(u.Role, "Employee")

@@ -86,6 +86,9 @@ public class AIConfigController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = _db.AIActionsLogs
             .Include(l => l.User)
             .Include(l => l.Task)

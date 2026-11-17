@@ -60,16 +60,21 @@ public class DepartmentsController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin,CEO,HR")]
     public async Task<IActionResult> CreateDepartment([FromBody] CreateDepartmentDto dto)
     {
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(dto.DepartmentName) || dto.DepartmentName.Trim().Length > 150)
+            return BadRequest(new { message = "Department name is required and must not exceed 150 characters." });
+        var departmentName = dto.DepartmentName.Trim();
+        if (await _db.Departments.AnyAsync(d => d.DepartmentName == departmentName))
+            return Conflict(new { message = "A department with this name already exists." });
 
         var dept = new Department
         {
             CompanyId = companyId.Value,
-            DepartmentName = dto.DepartmentName,
+            DepartmentName = departmentName,
             Description = dto.Description,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -85,7 +90,7 @@ public class DepartmentsController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin,CEO,HR")]
     public async Task<IActionResult> UpdateDepartment(int id, [FromBody] UpdateDepartmentDto dto)
     {
         var companyId = GetCurrentCompanyId();
@@ -94,8 +99,14 @@ public class DepartmentsController : BaseApiController
         var dept = await _db.Departments
             .FirstOrDefaultAsync(d => d.DepartmentId == id && d.CompanyId == companyId.Value);
         if (dept == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(dto.DepartmentName) || dto.DepartmentName.Trim().Length > 150)
+            return BadRequest(new { message = "Department name is required and must not exceed 150 characters." });
+        var departmentName = dto.DepartmentName.Trim();
+        if (await _db.Departments.AnyAsync(d =>
+            d.DepartmentId != id && d.DepartmentName == departmentName))
+            return Conflict(new { message = "A department with this name already exists." });
 
-        dept.DepartmentName = dto.DepartmentName;
+        dept.DepartmentName = departmentName;
         dept.Description = dto.Description;
         dept.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

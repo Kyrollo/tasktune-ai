@@ -17,6 +17,7 @@ public class AuditLogsController : BaseApiController
     public AuditLogsController(TaskTuneDbContext db) => _db = db;
 
     [HttpGet]
+    [Authorize(Roles = "CEO,Admin")]
     public async Task<IActionResult> GetLogs(
         [FromQuery] string? resourceType,
         [FromQuery] string? action,
@@ -29,7 +30,9 @@ public class AuditLogsController : BaseApiController
         }
 
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (companyId == null) return Unauthorized();
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
         var query = _db.AuditLogs
             .Include(l => l.User)
@@ -66,6 +69,7 @@ public class AuditLogsController : BaseApiController
     }
 
     [HttpGet("export")]
+    [Authorize(Roles = "CEO,Admin")]
     public async Task<IActionResult> Export(
         [FromQuery] string? resourceType,
         [FromQuery] string? action)
@@ -77,7 +81,7 @@ public class AuditLogsController : BaseApiController
 
         var companyId = GetCurrentCompanyId();
         var userId = GetCurrentUserId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (companyId == null || userId == null) return Unauthorized();
 
         var query = _db.AuditLogs
             .Include(l => l.User)
@@ -92,6 +96,7 @@ public class AuditLogsController : BaseApiController
 
         var items = await query
             .OrderByDescending(l => l.Timestamp)
+            .Take(5000)
             .Select(l => new
             {
                 l.LogId,

@@ -45,8 +45,11 @@ public class CompaniesController : BaseApiController
 
         var company = await _db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId.Value);
         if (company == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(dto.CompanyName) || dto.CompanyName.Trim().Length > 150 ||
+            (dto.SettingsJson != null && dto.SettingsJson.Length > 20000))
+            return BadRequest(new { message = "Company name or settings payload is invalid." });
 
-        company.CompanyName = dto.CompanyName;
+        company.CompanyName = dto.CompanyName.Trim();
         company.SettingsJson = dto.SettingsJson;
         company.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
