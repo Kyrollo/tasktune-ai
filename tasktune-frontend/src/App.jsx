@@ -27,6 +27,7 @@ import EmployeeProfile from './pages/shared/EmployeeProfile';
 import Notifications from './pages/shared/Notifications';
 import Settings from './pages/shared/Settings';
 import SubscriptionOverview from './pages/admin/SubscriptionOverview';
+import AttendanceCenter from './pages/shared/AttendanceCenter';
 import LeaveCenter from './pages/shared/LeaveCenter';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/profile/:id" element={<ProtectedRoute><EmployeeProfile /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
       <Route path="/leave" element={<ProtectedRoute><LeaveCenter /></ProtectedRoute>} />
+      <Route path="/attendance" element={<ProtectedRoute><AttendanceCenter /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
       {/* Fallback */}
