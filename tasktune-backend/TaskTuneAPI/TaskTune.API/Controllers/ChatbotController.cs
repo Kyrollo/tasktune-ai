@@ -223,7 +223,7 @@ public class ChatbotController : BaseApiController
     private async Task<ChatExecutionResult> BuildAssistantReplyAsync(User user, ChatThread thread, string message)
     {
         var scope = await BuildScopeAsync(user, thread);
-        var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId);
+        var config = await AIConfigurationStore.LoadAsync(_db, user.CompanyId, _configuration);
         var agentConfig = config.GetAgent("chat_assistant");
 
         if (config.Enabled && config.Features.ChatAssistant && agentConfig.Enabled)
@@ -253,7 +253,7 @@ public class ChatbotController : BaseApiController
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-            if (!AgentServiceSecurity.TryConfigure(http, _configuration)) return null;
+            if (!AgentServiceSecurity.TryConfigure(http, _configuration, config.BaseUrl)) return null;
             var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
             var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
             var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);

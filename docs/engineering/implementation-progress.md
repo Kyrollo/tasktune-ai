@@ -48,6 +48,8 @@ This record tracks implementation against the product and engineering plan. It s
 - Tenant-isolation and task-scope tests include EF Core InMemory regression coverage and a real SQL Server integration test in CI. The SQL Server test verifies that company and user query filters are translated and enforced by the SQL Server provider. It does not yet prove every relationship filter, deployment migration, rollback, concurrency path, or production data integrity.
 - Phase 3 run [#44129659808](https://github.com/Kyrollo/tasktune-ai/actions/runs/44129659808) on the phase 3 tree: all three jobs passed, including 5 backend tests with the SQL Server integration test.
 - Removed tracked local `.dotnet` and Vite cache artifacts and added ignore rules.
+- Phase 4 agent-boundary run [#44132448022](https://github.com/Kyrollo/tasktune-ai/actions/runs/44132448022): all three CI jobs passed.
+- Phase 5 encrypted-provider-secrets run [#44136064215](https://github.com/Kyrollo/tasktune-ai/actions/runs/44136064215): API build, all 6 backend tests (including encrypted secret handling and SQL Server query-filter translation), frontend lint/build, and Python tests passed.
 - Local .NET execution was not available in the implementation environment; GitHub Actions is the build/test evidence.
 - Frontend install reported 19 dependency advisories (1 low, 4 moderate, 14 high). No blind `npm audit fix` was applied; affected packages still need targeted triage and upgrades.
 
@@ -60,8 +62,8 @@ This record tracks implementation against the product and engineering plan. It s
 5. Implement password reset with expiring, single-use, hashed tokens and rate limiting.
 6. Add refresh-token session-family tracking and reuse detection, device/session revocation and account recovery hardening.
 7. Complete the communication approval workflow, authorized-recipient policy, delivery outbox/idempotency and provider credential isolation before re-enabling outbound SMTP.
-8. Audit all `IgnoreQueryFilters()` use, raw SQL and cross-service data paths. Verify all AI tools and report agents receive only authorized, tenant-scoped inputs. Provider keys are no longer written into AI action audit records, but are still sent to internal agent endpoints in request payloads; add private authenticated service-to-service transport and secret references before production.
-9. Replace development-only CORS origins with a deployment-specific allowlist; harden agent-to-API network authentication and API key management.
+8. Continue the full `IgnoreQueryFilters()`/raw-SQL audit and authorize every remaining downstream agent/tool path. Core API-to-agent requests now use a private service key and TLS for remote destinations; move provider keys to a dedicated managed secret vault and service-side references for larger multi-instance production deployments.
+9. Configure production `Cors:AllowedOrigins`, `AgentServices:ServiceApiKey`, and `AISecrets:EncryptionKey` in the deployment secret manager; rotate all existing provider keys and protect/backup the encryption key. The API and agents now reject missing service authentication and arbitrary non-TLS remote agent URLs.
 10. Triage the 19 npm dependency advisories (1 low, 4 moderate, 14 high), complete full dependency/license ownership review, secret rotation (previously committed secrets remain in Git history), telemetry, backups/restore drills, and independent security review.
 
 ## Release posture

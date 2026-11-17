@@ -98,7 +98,7 @@ public class CommunicationsController : BaseApiController
     {
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("email_assistant");
 
         var users = await _db.Users
@@ -174,7 +174,7 @@ public class CommunicationsController : BaseApiController
             .Include(u => u.Department)
             .FirstOrDefaultAsync(u => u.UserId == userId.Value);
         if (sender == null) return Unauthorized();
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("email_assistant");
         if (!aiConfig.Enabled || !aiConfig.Features.EmailAssistant || !agentConfig.Enabled)
         {
@@ -218,7 +218,7 @@ public class CommunicationsController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration, agentConfig.BaseUrl))
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         try
         {

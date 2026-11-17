@@ -55,7 +55,8 @@ function normalizeConfig(raw) {
       ...incoming,
       key: agent.key,
       name: incoming.name || agent.name,
-      apiKey: incoming.apiKey || '',
+      apiKey: '',
+      hasApiKey: !!incoming.hasApiKey,
       baseUrl: incoming.baseUrl || '',
       endpoint: incoming.endpoint || '',
     };
@@ -254,7 +255,7 @@ export default function AIControlPanel() {
                         type="password"
                         value={agent.apiKey}
                         onChange={e => updateAgent(agent.key, 'apiKey', e.target.value)}
-                        placeholder="Enter provider API key"
+                        placeholder={agent.hasApiKey ? 'Stored securely — leave blank to keep existing' : 'Enter provider API key'}
                         className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-orange"
                       />
                     </div>
@@ -361,7 +362,7 @@ export default function AIControlPanel() {
               </div>
               <div className="flex items-center justify-between p-3 bg-bg rounded-lg">
                 <span className="text-sm text-text-secondary">Keys Configured</span>
-                <span className="text-sm text-text-primary">{config.agents.filter(agent => agent.apiKey).length}/{config.agents.length}</span>
+                <span className="text-sm text-text-primary">{config.agents.filter(agent => agent.hasApiKey || agent.apiKey).length}/{config.agents.length}</span>
               </div>
             </div>
           </Card>

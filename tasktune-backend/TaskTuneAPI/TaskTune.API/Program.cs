@@ -45,6 +45,23 @@ if (accessTokenExpirationMinutes <= 0 || refreshTokenExpirationDays <= 0)
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
+var aiEncryptionKey = builder.Configuration["AISecrets:EncryptionKey"];
+if (!builder.Environment.IsDevelopment())
+{
+    byte[] decodedAiEncryptionKey;
+    try
+    {
+        decodedAiEncryptionKey = Convert.FromBase64String(aiEncryptionKey ?? string.Empty);
+    }
+    catch (FormatException ex)
+    {
+        throw new InvalidOperationException("AISecrets:EncryptionKey must be a base64-encoded 32-byte key outside Development.", ex);
+    }
+
+    if (decodedAiEncryptionKey.Length != 32)
+        throw new InvalidOperationException("AISecrets:EncryptionKey must decode to exactly 32 bytes outside Development.");
+}
+
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .WriteTo.File("logs/tasktune-.txt", rollingInterval: RollingInterval.Day)

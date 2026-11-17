@@ -284,7 +284,7 @@ public class ReportsController : BaseApiController
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
         if (user == null) return Unauthorized();
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("report_generation");
         if (!aiConfig.Enabled || !aiConfig.Features.ReportGeneration || !agentConfig.Enabled)
         {
@@ -360,7 +360,7 @@ public class ReportsController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
-        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration, agentConfig.BaseUrl))
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         try
         {

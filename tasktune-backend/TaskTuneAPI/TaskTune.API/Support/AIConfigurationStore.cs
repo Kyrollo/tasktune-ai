@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json.Nodes;
 using TaskTune.Infrastructure.Models;
 
@@ -145,76 +148,166 @@ public static class AIConfigurationStore
         WriteIndented = false
     };
 
-    public static async Task<TaskTuneAIConfiguration> LoadAsync(TaskTuneDbContext db, int companyId)
+    public static async Task<TaskTuneAIConfiguration> LoadAsync(
+        TaskTuneDbContext db, int companyId, IConfiguration configuration)
     {
         var company = await db.Companies.FindAsync(companyId);
-        if (company == null)
-        {
-            return TaskTuneAIConfiguration.CreateDefault(companyId);
-        }
+        if (company == null) return TaskTuneAIConfiguration.CreateDefault(companyId);
 
         var config = TryParse(company.SettingsJson, companyId) ?? TaskTuneAIConfiguration.CreateDefault(companyId);
         Normalize(config, companyId);
+        var migrateLegacySecrets = config.Agents.Values.Any(agent =>
+            !string.IsNullOrWhiteSpace(agent.ApiKey) &&
+            !agent.ApiKey.StartsWith(EncryptedPrefix, StringComparison.Ordinal));
+
+        foreach (var agent in config.Agents.Values)
+            agent.ApiKey = Unprotect(agent.ApiKey, configuration);
+
+        if (migrateLegacySecrets)
+        {
+            var stored = JsonSerializer.Deserialize<TaskTuneAIConfiguration>(
+                JsonSerializer.Serialize(config, JsonOptions), JsonOptions)
+                ?? TaskTuneAIConfiguration.CreateDefault(companyId);
+            foreach (var agent in stored.Agents.Values)
+                agent.ApiKey = Protect(agent.ApiKey, configuration);
+
+            JsonObject root;
+            try { root = JsonNode.Parse(company.SettingsJson ?? "{}")?.AsObject() ?? []; }
+            catch { root = []; }
+            root["aiConfig"] = JsonSerializer.SerializeToNode(stored, JsonOptions);
+            company.SettingsJson = root.ToJsonString(JsonOptions);
+            await db.SaveChangesAsync();
+        }
+
         return config;
     }
 
-    public static async Task<TaskTuneAIConfiguration> SaveAsync(TaskTuneDbContext db, int companyId, TaskTuneAIConfiguration config)
+    public static async Task<TaskTuneAIConfiguration> SaveAsync(
+        TaskTuneDbContext db, int companyId, TaskTuneAIConfiguration config, IConfiguration configuration)
     {
-        var company = await db.Companies.FindAsync(companyId);
-        if (company == null)
-        {
-            throw new InvalidOperationException($"Company {companyId} was not found.");
-        }
+        var company = await db.Companies.FindAsync(companyId)
+            ?? throw new InvalidOperationException($"Company {companyId} was not found.");
+
+        var existing = TryParse(company.SettingsJson, companyId) ?? TaskTuneAIConfiguration.CreateDefault(companyId);
+        Normalize(existing, companyId);
+        foreach (var oldAgent in existing.Agents.Values)
+            oldAgent.ApiKey = Unprotect(oldAgent.ApiKey, configuration);
 
         Normalize(config, companyId);
+        foreach (var (key, agent) in config.Agents)
+        {
+            if (string.IsNullOrWhiteSpace(agent.ApiKey) &&
+                existing.Agents.TryGetValue(key, out var oldAgent))
+                agent.ApiKey = oldAgent.ApiKey;
+        }
+
+        // Persist a separate copy with encrypted provider credentials. The live in-memory
+        // config remains decrypted only for the backend-to-agent request path.
+        var stored = JsonSerializer.Deserialize<TaskTuneAIConfiguration>(
+            JsonSerializer.Serialize(config, JsonOptions), JsonOptions)
+            ?? TaskTuneAIConfiguration.CreateDefault(companyId);
+        foreach (var agent in stored.Agents.Values)
+            agent.ApiKey = Protect(agent.ApiKey, configuration);
 
         JsonObject root;
         if (string.IsNullOrWhiteSpace(company.SettingsJson))
-        {
             root = [];
-        }
         else
         {
-            try
-            {
-                root = JsonNode.Parse(company.SettingsJson)?.AsObject() ?? [];
-            }
-            catch
-            {
-                root = [];
-            }
+            try { root = JsonNode.Parse(company.SettingsJson)?.AsObject() ?? []; }
+            catch { root = []; }
         }
 
-        root["aiConfig"] = JsonSerializer.SerializeToNode(config, JsonOptions);
+        root["aiConfig"] = JsonSerializer.SerializeToNode(stored, JsonOptions);
         company.SettingsJson = root.ToJsonString(JsonOptions);
-
         await db.SaveChangesAsync();
         return config;
     }
 
-    public static object ToClientResponse(TaskTuneAIConfiguration config)
+    public static object ToClientResponse(TaskTuneAIConfiguration config) => new
     {
-        return new
+        config.CompanyId,
+        config.Enabled,
+        features = config.Features,
+        agents = config.Agents.OrderBy(kvp => kvp.Key).Select(kvp => new
         {
-            config.CompanyId,
-            config.Enabled,
-            features = config.Features,
-            agents = config.Agents
-                .OrderBy(kvp => kvp.Key)
-                .Select(kvp => new
-                {
-                    key = kvp.Key,
-                    kvp.Value.Name,
-                    kvp.Value.Provider,
-                    kvp.Value.Model,
-                    kvp.Value.ApiKey,
-                    kvp.Value.BaseUrl,
-                    kvp.Value.Endpoint,
-                    kvp.Value.Temperature,
-                    kvp.Value.MaxTokens,
-                    kvp.Value.Enabled
-                })
-        };
+            key = kvp.Key,
+            kvp.Value.Name,
+            kvp.Value.Provider,
+            kvp.Value.Model,
+            hasApiKey = !string.IsNullOrWhiteSpace(kvp.Value.ApiKey),
+            kvp.Value.BaseUrl,
+            kvp.Value.Endpoint,
+            kvp.Value.Temperature,
+            kvp.Value.MaxTokens,
+            kvp.Value.Enabled
+        })
+    };
+
+    public static object ToAuditSnapshot(TaskTuneAIConfiguration config) => ToClientResponse(config);
+
+    private const string EncryptedPrefix = "enc:v1:";
+
+    private static string? Protect(string? plaintext, IConfiguration configuration)
+    {
+        if (string.IsNullOrWhiteSpace(plaintext))
+            return plaintext;
+
+        var key = GetEncryptionKey(configuration);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var clearBytes = Encoding.UTF8.GetBytes(plaintext);
+        var ciphertext = new byte[clearBytes.Length];
+        var tag = new byte[16];
+        using (var aes = new AesGcm(key, tag.Length))
+            aes.Encrypt(nonce, clearBytes, ciphertext, tag);
+
+        var payload = new byte[nonce.Length + tag.Length + ciphertext.Length];
+        Buffer.BlockCopy(nonce, 0, payload, 0, nonce.Length);
+        Buffer.BlockCopy(tag, 0, payload, nonce.Length, tag.Length);
+        Buffer.BlockCopy(ciphertext, 0, payload, nonce.Length + tag.Length, ciphertext.Length);
+        CryptographicOperations.ZeroMemory(key);
+        CryptographicOperations.ZeroMemory(clearBytes);
+        return EncryptedPrefix + Convert.ToBase64String(payload);
+    }
+
+    private static string? Unprotect(string? stored, IConfiguration configuration)
+    {
+        if (string.IsNullOrWhiteSpace(stored) || !stored.StartsWith(EncryptedPrefix, StringComparison.Ordinal))
+            return stored; // Legacy plaintext migrates to encryption on the next successful save.
+
+        try
+        {
+            var payload = Convert.FromBase64String(stored[EncryptedPrefix.Length..]);
+            if (payload.Length < 28) throw new CryptographicException("Invalid encrypted provider secret.");
+            var key = GetEncryptionKey(configuration);
+            var plaintext = new byte[payload.Length - 28];
+            using (var aes = new AesGcm(key, 16))
+                aes.Decrypt(payload.AsSpan(0, 12), payload.AsSpan(28), payload.AsSpan(12, 16), plaintext);
+            CryptographicOperations.ZeroMemory(key);
+            return Encoding.UTF8.GetString(plaintext);
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException or InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                "An encrypted AI provider secret could not be decrypted. Verify AISecrets:EncryptionKey and restore the original key if it was rotated.", ex);
+        }
+    }
+
+    private static byte[] GetEncryptionKey(IConfiguration configuration)
+    {
+        var encoded = configuration["AISecrets:EncryptionKey"];
+        if (string.IsNullOrWhiteSpace(encoded))
+            throw new InvalidOperationException("AISecrets:EncryptionKey is required to store or read provider API keys.");
+        try
+        {
+            var key = Convert.FromBase64String(encoded);
+            if (key.Length != 32) throw new InvalidOperationException("AISecrets:EncryptionKey must decode to exactly 32 bytes.");
+            return key;
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("AISecrets:EncryptionKey must be a base64-encoded 32-byte key.", ex);
+        }
     }
 
     private static TaskTuneAIConfiguration? TryParse(string? settingsJson, int companyId)

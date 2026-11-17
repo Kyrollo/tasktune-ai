@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 
@@ -12,8 +13,13 @@ namespace TaskTune.API.Controllers;
 public class AIConfigController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public AIConfigController(TaskTuneDbContext db) => _db = db;
+    public AIConfigController(TaskTuneDbContext db, IConfiguration configuration)
+    {
+        _db = db;
+        _configuration = configuration;
+    }
 
     [HttpGet("config")]
     public async Task<IActionResult> GetConfig()
@@ -26,7 +32,7 @@ public class AIConfigController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
-        var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var config = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         return Ok(AIConfigurationStore.ToClientResponse(config));
     }
 
@@ -44,15 +50,15 @@ public class AIConfigController : BaseApiController
         if (userId == null) return Unauthorized();
         if (incoming == null) return BadRequest(new { message = "Configuration payload is required." });
 
-        var before = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
-        var saved = await AIConfigurationStore.SaveAsync(_db, companyId.Value, incoming);
+        var before = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
+        var saved = await AIConfigurationStore.SaveAsync(_db, companyId.Value, incoming, _configuration);
 
         _db.AIActionsLogs.Add(new AIActionsLog
         {
             ActionType = 6,
             UserId = userId.Value,
-            InputData = System.Text.Json.JsonSerializer.Serialize(before),
-            OutputData = System.Text.Json.JsonSerializer.Serialize(saved),
+            InputData = System.Text.Json.JsonSerializer.Serialize(AIConfigurationStore.ToAuditSnapshot(before)),
+            OutputData = System.Text.Json.JsonSerializer.Serialize(AIConfigurationStore.ToAuditSnapshot(saved)),
             ModelVersion = "ai_control_panel",
             Timestamp = DateTime.UtcNow
         });
@@ -65,8 +71,8 @@ public class AIConfigController : BaseApiController
             action: "UPDATE",
             resourceType: "AI_Config",
             resourceId: companyId.Value,
-            before: before,
-            after: saved);
+            before: AIConfigurationStore.ToAuditSnapshot(before),
+            after: AIConfigurationStore.ToAuditSnapshot(saved));
 
         return Ok(new
         {
