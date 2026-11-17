@@ -471,7 +471,7 @@ public class TasksController : BaseApiController
         var providedKey = Request.Headers["Idempotency-Key"].ToString();
         var idempotencyKey = string.IsNullOrWhiteSpace(providedKey)
             ? $"ai:{operation}:{Guid.NewGuid():N}"
-            : $"ai:{operation}:{providedKey}";
+            : $"ai:{operation}:{resourceId}:{providedKey}";
         if (idempotencyKey.Length > 160)
             return BadRequest(new { message = "Idempotency-Key must not exceed 144 characters." });
 
