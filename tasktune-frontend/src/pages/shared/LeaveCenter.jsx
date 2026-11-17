@@ -324,7 +324,7 @@ export default function LeaveCenter() {
               <Button type="submit" disabled={submitting || types.length === 0} className="w-full">
                 {submitting ? 'Submitting…' : 'Submit request'}
               </Button>
-              <p className="text-xs text-text-muted">Working days exclude Saturday, Sunday and configured company holidays. Requests spanning calendar years are not yet supported.</p>
+              <p className="text-xs text-text-muted">Working days exclude Saturday, Sunday and configured company holidays. Requests can span calendar years when HR has allocated balances for each affected year.</p>
             </form>
           </Card>
 
