@@ -89,7 +89,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.SubscriptionPlans WHERE Code = N'starter')
         (Code, Name, Description, MaxActiveEmployees, MaxStorageBytes, MaxMonthlyAiRequests, EnabledModulesJson, BillingMode, IsActive, IsPublic)
     VALUES
         (N'starter', N'Starter', N'Essential HR and work management for small teams.', 15, 5368709120, 100,
-         N'["core_hr","employee_self_service","leave","attendance","tasks","basic_reports"]', N'free', 1, 1);
+         N'["core_hr","employee_self_service","leave","attendance","tasks","reports"]', N'free', 1, 1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.SubscriptionPlans WHERE Code = N'growth')
     INSERT dbo.SubscriptionPlans
