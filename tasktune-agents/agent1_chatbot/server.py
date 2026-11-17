@@ -9,7 +9,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 
 _agents_dir = Path(__file__).resolve().parent.parent
 load_dotenv(_agents_dir / ".env")
@@ -18,6 +17,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(_agents_dir))
 
 from agent1_chatbot.graph import run_chatbot
+from agent_security import add_agent_security
 from agent1_chatbot.models import ChatbotRequest, ChatbotResponse
 
 logging.basicConfig(
@@ -32,13 +32,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_agent_security(app)
+
 
 
 @app.post("/api/chat", response_model=ChatbotResponse, tags=["Chatbot"])

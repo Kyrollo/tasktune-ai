@@ -20,7 +20,6 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # Load .env from the tasktune-agents/ parent directory
@@ -32,6 +31,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(_agents_dir))
 
 from agent4_Report_Agent.agents.progress_agent import build_progress_agent  # noqa: E402
+from agent_security import add_agent_security
 
 logging.basicConfig(
     level=logging.INFO,
@@ -116,13 +116,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_agent_security(app)
+
 
 
 def _run_agent_sync(initial_state: dict) -> dict:

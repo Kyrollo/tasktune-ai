@@ -85,9 +85,32 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+var agentServiceApiKey = builder.Configuration["AgentServices:ServiceApiKey"];
+if (!builder.Environment.IsDevelopment() &&
+    (string.IsNullOrWhiteSpace(agentServiceApiKey) || Encoding.UTF8.GetByteCount(agentServiceApiKey) < 32))
+{
+    throw new InvalidOperationException("AgentServices:ServiceApiKey must be configured with at least 32 UTF-8 bytes outside Development.");
+}
+
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").GetChildren()
+    .Select(item => item.Value?.Trim())
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .Cast<string>()
+    .ToArray();
+
+if (corsOrigins.Length == 0 && builder.Environment.IsDevelopment())
+{
+    corsOrigins = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"];
+}
+else if (corsOrigins.Length == 0)
+{
+    throw new InvalidOperationException("Cors:AllowedOrigins must contain explicit frontend origins outside Development.");
+}
+
 builder.Services.AddCors(options =>
     options.AddPolicy("ReactFrontend", policy =>
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:3000")
+        policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials()));

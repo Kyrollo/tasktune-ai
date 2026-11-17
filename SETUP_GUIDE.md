@@ -44,6 +44,19 @@ dotnet user-secrets set "JwtSettings:SecretKey" $jwtKey
 
 The API requires a JWT key of at least 32 UTF-8 bytes and a configured SQL connection string. These values can also be supplied through the environment variables ConnectionStrings__DefaultConnection and JwtSettings__SecretKey.
 
+Generate a separate private API-to-agent key and store it outside source control:
+
+~~~powershell
+$bytes = New-Object byte[] 48
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$agentKey = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+$rng.Dispose()
+dotnet user-secrets set "AgentServices:ServiceApiKey" $agentKey
+~~~
+
+The API requires an explicit `Cors:AllowedOrigins` list outside Development. Configure its exact HTTPS frontend origin (for example `Cors:AllowedOrigins:0=https://app.example.com`); do not use `*` with credentialed requests.
+
 Restore and run the API:
 
 ~~~powershell
@@ -74,7 +87,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ~~~
 
-Configure provider credentials in a local .env file using the provided example file when present. Never commit provider keys. Follow tasktune-agents/project_run_guide.md for the available agent startup commands and ports.
+Copy `.env.example` to `.env` in `tasktune-agents/`. Set `TASKTUNE_SERVICE_API_KEY` to the exact same generated value stored as `AgentServices:ServiceApiKey` for the API. Every agent route except `GET /api/health` rejects requests without this shared service key; wildcard CORS has been removed. Add model-provider credentials to `.env` only for agents that need them. Never commit `.env` or provider keys. Follow tasktune-agents/project_run_guide.md for the available agent startup commands and ports.
 
 ## 4. React frontend
 

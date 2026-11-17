@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
@@ -13,8 +14,13 @@ namespace TaskTune.API.Controllers;
 public class ReportsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public ReportsController(TaskTuneDbContext db) => _db = db;
+    public ReportsController(TaskTuneDbContext db, IConfiguration configuration)
+    {
+        _db = db;
+        _configuration = configuration;
+    }
 
     [HttpGet]
     [Authorize(Roles = "Supervisor,Manager,CEO,HR,Admin")]
@@ -354,6 +360,8 @@ public class ReportsController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         try
         {
             var agentBaseUrl = string.IsNullOrWhiteSpace(agentConfig.BaseUrl)
