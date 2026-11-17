@@ -341,6 +341,244 @@ public sealed class AttendanceController : BaseApiController
         });
     }
 
+    [HttpPost("schedule/generate")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> GenerateSchedule([FromBody] GenerateAttendanceScheduleRequest request)
+    {
+        var actorId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (actorId == null || companyId == null) return Unauthorized();
+        if (request.To < request.From)
+            return BadRequest(new { message = "The end date cannot be earlier than the start date." });
+        if (request.To.DayNumber - request.From.DayNumber > 30)
+            return BadRequest(new { message = "Schedule generation is limited to 31 calendar days per request." });
+
+        var (settings, timeZone) = await GetCompanyTimeZoneAsync(companyId.Value);
+        if (timeZone == null)
+            return StatusCode(503, new { message = "The company time zone is invalid. HR must correct the work calendar settings." });
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var assignmentRows = await (
+            from assignment in _db.EmployeeShiftAssignments
+            join employee in _db.Users on assignment.UserId equals employee.UserId
+            join shift in _db.WorkShifts on assignment.WorkShiftId equals shift.WorkShiftId
+            where assignment.CompanyId == companyId.Value &&
+                  employee.CompanyId == companyId.Value &&
+                  employee.IsActive &&
+                  shift.CompanyId == companyId.Value &&
+                  shift.IsActive &&
+                  assignment.EffectiveFrom <= request.To &&
+                  (!assignment.EffectiveTo.HasValue || assignment.EffectiveTo >= request.From)
+            select new
+            {
+                assignment.EmployeeShiftAssignmentId,
+                assignment.UserId,
+                assignment.WorkShiftId,
+                assignment.DaysOfWeekMask,
+                assignment.EffectiveFrom,
+                assignment.EffectiveTo,
+                shift.StartTime,
+                shift.EndTime,
+                shift.BreakMinutes
+            })
+            .ToListAsync();
+
+        var holidays = await _db.CompanyHolidays.AsNoTracking()
+            .Where(x => x.CompanyId == companyId.Value &&
+                        x.IsActive &&
+                        ((x.HolidayDate >= request.From && x.HolidayDate <= request.To) || x.IsRecurring))
+            .Select(x => new { x.HolidayDate, x.IsRecurring })
+            .ToListAsync();
+
+        var leavePeriods = await _db.LeaveRequests.AsNoTracking()
+            .Where(x => x.CompanyId == companyId.Value &&
+                        x.Status == "approved" &&
+                        x.StartDate <= request.To &&
+                        x.EndDate >= request.From)
+            .Select(x => new { x.UserId, x.StartDate, x.EndDate })
+            .ToListAsync();
+
+        var existing = await _db.AttendanceRecords
+            .Where(x => x.CompanyId == companyId.Value &&
+                        x.WorkDate >= request.From &&
+                        x.WorkDate <= request.To)
+            .Select(x => new { x.UserId, x.WorkDate })
+            .ToListAsync();
+        var existingKeys = existing
+            .Select(x => $"{x.UserId}:{x.WorkDate:yyyyMMdd}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        var generated = 0;
+        var skippedExisting = 0;
+        var skippedLeave = 0;
+        var skippedHoliday = 0;
+        var skippedNoShift = 0;
+
+        for (var workDate = request.From; workDate <= request.To; workDate = workDate.AddDays(1))
+        {
+            var isHoliday = holidays.Any(h =>
+                h.HolidayDate == workDate ||
+                (h.IsRecurring &&
+                 h.HolidayDate.Month == workDate.Month &&
+                 h.HolidayDate.Day == workDate.Day));
+            if (isHoliday)
+            {
+                skippedHoliday++;
+                continue;
+            }
+
+            foreach (var assignment in assignmentRows)
+            {
+                if (workDate < assignment.EffectiveFrom ||
+                    (assignment.EffectiveTo.HasValue && workDate > assignment.EffectiveTo.Value))
+                    continue;
+
+                var dayMask = AttendanceScheduleCalculator.GetWeekdayMask(workDate.DayOfWeek);
+                if ((assignment.DaysOfWeekMask & dayMask) == 0)
+                    continue;
+
+                var key = $"{assignment.UserId}:{workDate:yyyyMMdd}";
+                if (existingKeys.Contains(key))
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                if (leavePeriods.Any(x =>
+                        x.UserId == assignment.UserId &&
+                        x.StartDate <= workDate &&
+                        x.EndDate >= workDate))
+                {
+                    skippedLeave++;
+                    continue;
+                }
+
+                try
+                {
+                    var window = AttendanceScheduleCalculator.BuildUtcWindow(
+                        workDate,
+                        assignment.StartTime,
+                        assignment.EndTime,
+                        timeZone);
+
+                    _db.AttendanceRecords.Add(new AttendanceRecord
+                    {
+                        CompanyId = companyId.Value,
+                        UserId = assignment.UserId,
+                        WorkShiftId = assignment.WorkShiftId,
+                        WorkDate = workDate,
+                        ScheduledStartUtc = window.StartUtc,
+                        ScheduledEndUtc = window.EndUtc,
+                        Status = "scheduled",
+                        BreakMinutes = assignment.BreakMinutes,
+                        CaptureSource = "system"
+                    });
+
+                    existingKeys.Add(key);
+                    generated++;
+                }
+                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+                {
+                    skippedNoShift++;
+                }
+            }
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, "GENERATE", "AttendanceSchedule", 0,
+                after: new
+                {
+                    request.From,
+                    request.To,
+                    timeZoneId = settings.TimeZoneId,
+                    Generated = generated,
+                    SkippedExisting = skippedExisting,
+                    SkippedApprovedLeave = skippedLeave,
+                    SkippedCompanyHoliday = skippedHoliday,
+                    SkippedInvalidShift = skippedNoShift
+                });
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new { message = "Schedule generation conflicted with another request. Refresh the schedule and retry." });
+        }
+
+        return Ok(new
+        {
+            request.From,
+            request.To,
+            Generated = generated,
+            SkippedExisting = skippedExisting,
+            SkippedApprovedLeave = skippedLeave,
+            SkippedCompanyHoliday = skippedHoliday,
+            SkippedInvalidShift = skippedNoShift
+        });
+    }
+
+    [HttpPost("schedule/reconcile-missed")]
+    [Authorize(Roles = "HR,CEO,Admin")]
+    public async Task<IActionResult> ReconcileMissedAttendance([FromBody] ReconcileMissedAttendanceRequest? request)
+    {
+        var actorId = GetCurrentUserId();
+        var companyId = GetCurrentCompanyId();
+        if (actorId == null || companyId == null) return Unauthorized();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from = request?.From ?? today.AddDays(-30);
+        var to = request?.To ?? today;
+        if (to < from)
+            return BadRequest(new { message = "The end date cannot be earlier than the start date." });
+        if (to.DayNumber - from.DayNumber > 30)
+            return BadRequest(new { message = "Missed-attendance reconciliation is limited to 31 calendar days per request." });
+
+        var now = DateTime.UtcNow;
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var candidates = await (
+            from record in _db.AttendanceRecords
+            join shift in _db.WorkShifts on record.WorkShiftId equals shift.WorkShiftId
+            where record.CompanyId == companyId.Value &&
+                  record.WorkDate >= from &&
+                  record.WorkDate <= to &&
+                  shift.CompanyId == companyId.Value &&
+                  record.Status == "scheduled" &&
+                  record.CheckInUtc == null &&
+                  record.CheckOutUtc == null
+            select new { Record = record, shift.GraceMinutes })
+            .ToListAsync();
+
+        var missed = new List<AttendanceRecord>();
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Record.ScheduledEndUtc.AddMinutes(candidate.GraceMinutes) < now)
+            {
+                candidate.Record.Status = "missed";
+                missed.Add(candidate.Record);
+            }
+        }
+
+        if (missed.Count == 0)
+        {
+            await transaction.CommitAsync();
+            return Ok(new { From = from, To = to, ReconciledMissed = 0 });
+        }
+
+        await _db.SaveChangesAsync();
+        foreach (var record in missed)
+        {
+            await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, "MARK_MISSED", "AttendanceRecord", record.AttendanceRecordId,
+                after: new { record.UserId, record.WorkDate, record.Status });
+        }
+        await transaction.CommitAsync();
+
+        return Ok(new { From = from, To = to, ReconciledMissed = missed.Count });
+    }
+
     [HttpPost("records/{attendanceRecordId:int}/adjust")]
     [Authorize(Roles = "HR,Manager,CEO,Admin,Supervisor")]
     public async Task<IActionResult> AdjustAttendance(
@@ -516,3 +754,5 @@ public sealed class AttendanceController : BaseApiController
 }
 
 public sealed record AdjustAttendanceRequest(DateTimeOffset? CheckInUtc, DateTimeOffset? CheckOutUtc, string? Notes);
+public sealed record GenerateAttendanceScheduleRequest(DateOnly From, DateOnly To);
+public sealed record ReconcileMissedAttendanceRequest(DateOnly? From, DateOnly? To);
