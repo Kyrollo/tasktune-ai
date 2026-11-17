@@ -11,6 +11,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[RequireModule("tasks")]
 [Authorize]
 public class TasksController : BaseApiController
 {
