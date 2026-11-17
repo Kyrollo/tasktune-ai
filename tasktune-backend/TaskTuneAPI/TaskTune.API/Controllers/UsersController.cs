@@ -9,6 +9,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[RequireModule("core_hr")]
 [Authorize]
 public class UsersController : BaseApiController
 {
