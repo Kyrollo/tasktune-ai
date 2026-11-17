@@ -23,7 +23,7 @@ public class AttachmentsController : BaseApiController
     [HttpGet]
     public async Task<IActionResult> GetAttachments(int taskId)
     {
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
 
         var items = await _db.TaskAttachments
@@ -53,7 +53,7 @@ public class AttachmentsController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
 
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
 
         if (file == null || file.Length == 0)
@@ -61,12 +61,15 @@ public class AttachmentsController : BaseApiController
 
         if (file.Length > MaxFileSize)
             return BadRequest(new { message = "File size exceeds 10 MB limit." });
+        if (string.IsNullOrWhiteSpace(file.FileName) || file.FileName.Length > 255)
+            return BadRequest(new { message = "Invalid file name." });
 
         var uploadDir = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
             "uploads", "tasks", taskId.ToString());
         Directory.CreateDirectory(uploadDir);
 
-        var uniqueName = $"{Guid.NewGuid()}_{file.FileName}";
+        var safeFileName = Path.GetFileName(file.FileName);
+        var uniqueName = $"{Guid.NewGuid():N}_{safeFileName}";
         var filePath = Path.Combine(uploadDir, uniqueName);
 
         using (var stream = new FileStream(filePath, FileMode.Create))

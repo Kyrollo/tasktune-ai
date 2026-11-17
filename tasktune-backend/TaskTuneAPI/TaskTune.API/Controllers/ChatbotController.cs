@@ -67,6 +67,17 @@ public class ChatbotController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
 
+        if (request?.RelatedTaskId is int relatedTaskId &&
+            !await _db.Tasks.AnyAsync(t => t.TaskId == relatedTaskId))
+            return NotFound(new { message = "The selected task was not found in your company." });
+        if (request?.RelatedProjectId is int relatedProjectId &&
+            !await _db.Projects.AnyAsync(p => p.ProjectId == relatedProjectId))
+            return NotFound(new { message = "The selected project was not found in your company." });
+        if (request?.RelatedTaskId is int taskIdForProject &&
+            request.RelatedProjectId is int projectIdForTask &&
+            !await _db.Tasks.AnyAsync(t => t.TaskId == taskIdForProject && t.ProjectId == projectIdForTask))
+            return BadRequest(new { message = "The related task must belong to the selected project." });
+
         var thread = new ChatThread
         {
             UserId = userId.Value,
@@ -208,12 +219,8 @@ public class ChatbotController : BaseApiController
 
         if (config.Enabled && config.Features.ChatAssistant && agentConfig.Enabled)
         {
-            var sqlReply = await TryGetSqlBackedReplyAsync(user, thread, message, scope, agentConfig);
-            if (sqlReply != null)
-            {
-                return sqlReply;
-            }
-
+            // Model-generated SQL is never executed. The agent receives only structured,
+            // tenant- and role-scoped data prepared by BuildScopeAsync.
             var directReply = await TryGetAgentResponseAsync(BuildAgentPayload(user, thread, message, scope, null, agentConfig), agentConfig);
             if (!string.IsNullOrWhiteSpace(directReply?.Reply))
             {
@@ -229,187 +236,6 @@ public class ChatbotController : BaseApiController
         {
             Reply = BuildFallbackReply(user, thread, message, scope),
             ModelVersion = "tasktune_ai_assistant_fallback"
-        };
-    }
-
-    private async Task<ChatExecutionResult?> TryGetSqlBackedReplyAsync(
-        User user,
-        ChatThread thread,
-        string message,
-        ChatScope scope,
-        AIAgentConfig agentConfig)
-    {
-        try
-        {
-            await ChatbotSqlUtility.EnsureViewsAsync(_db);
-
-            var roleName = GetRoleName(user.Role);
-            var roleRules = ChatbotSqlUtility.GetRoleSqlRules(
-                roleName,
-                user.UserId,
-                user.CompanyId,
-                user.DepartmentId,
-                user.FullName ?? (user.FirstName + " " + user.LastName));
-
-            var planPayload = BuildAgentPayload(user, thread, message, scope, new
-            {
-                phase = "plan",
-                viewSchema = ChatbotSqlUtility.ViewSchemaDescription,
-                roleRules,
-                executedSql = (string?)null,
-                rows = Array.Empty<object>()
-            }, agentConfig);
-
-            var plan = await TryGetAgentResponseAsync(planPayload, agentConfig);
-            if (plan == null)
-            {
-                return null;
-            }
-
-            if (string.IsNullOrWhiteSpace(plan.SqlQuery))
-            {
-                if (!string.IsNullOrWhiteSpace(plan.Reply))
-                {
-                    return new ChatExecutionResult
-                    {
-                        Reply = plan.Reply!,
-                        ModelVersion = agentConfig.Model
-                    };
-                }
-
-                return null;
-            }
-
-            var (rows, error, executedSql) = await ChatbotSqlUtility.ExecuteScopedQueryAsync(
-                _db,
-                plan.SqlQuery,
-                user.CompanyId,
-                roleName,
-                user.UserId,
-                user.DepartmentId);
-
-            var answerPayload = BuildAgentPayload(user, thread, message, scope, new
-            {
-                phase = "answer",
-                viewSchema = ChatbotSqlUtility.ViewSchemaDescription,
-                roleRules,
-                generatedSql = plan.SqlQuery,
-                executedSql,
-                rows,
-                sqlError = error
-            }, agentConfig);
-
-            var answer = await TryGetAgentResponseAsync(answerPayload, agentConfig);
-            if (!string.IsNullOrWhiteSpace(answer?.Reply))
-            {
-                return new ChatExecutionResult
-                {
-                    Reply = answer.Reply!,
-                    GeneratedSql = plan.SqlQuery,
-                    ExecutedSql = executedSql,
-                    ResultCount = rows.Count,
-                    ModelVersion = agentConfig.Model
-                };
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
-    }
-
-    private async Task<ChatbotAgentResponse?> TryGetAgentResponseAsync(object payload, AIAgentConfig config)
-    {
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-            var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
-            var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
-            var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            return await response.Content.ReadFromJsonAsync<ChatbotAgentResponse>();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private object BuildAgentPayload(User user, ChatThread thread, string message, ChatScope scope, object? sqlContext, AIAgentConfig agentConfig)
-    {
-        var history = _db.ChatMessages
-            .Where(m => m.ThreadId == thread.ThreadId && !m.IsDeleted)
-            .OrderByDescending(m => m.SentAt)
-            .Take(12)
-            .AsEnumerable()
-            .OrderBy(m => m.SentAt)
-            .Select(m => new
-            {
-                role = m.Role == 0 ? "user" : "assistant",
-                content = m.Content,
-                sent_at = m.SentAt
-            })
-            .ToList();
-
-        var focusedTask = thread.RelatedTaskId.HasValue
-            ? scope.Tasks.FirstOrDefault(t => t.TaskId == thread.RelatedTaskId.Value)
-            : null;
-
-        var focusedProject = thread.RelatedProjectId.HasValue
-            ? scope.Projects.FirstOrDefault(p => p.ProjectId == thread.RelatedProjectId.Value)
-            : null;
-
-        return new
-        {
-            message,
-            current_date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
-            user = new
-            {
-                id = user.UserId,
-                name = user.FullName ?? (user.FirstName + " " + user.LastName),
-                email = user.Email,
-                role = GetRoleName(user.Role),
-                department = user.Department != null ? user.Department.DepartmentName : "Unassigned",
-                position = user.Position != null ? user.Position.PositionTitle : "N/A"
-            },
-            thread = new
-            {
-                id = thread.ThreadId,
-                title = thread.Title,
-                related_task_id = thread.RelatedTaskId,
-                related_project_id = thread.RelatedProjectId
-            },
-            history,
-            scope,
-            focus = new
-            {
-                task = focusedTask,
-                project = focusedProject
-            },
-            available_data = new
-            {
-                task_count = scope.Tasks.Count,
-                project_count = scope.Projects.Count,
-                employee_count = scope.EmployeeDirectory.Count,
-                evaluation_count = scope.Evaluations.Count,
-                report_count = scope.Reports.Count,
-                notification_count = scope.Notifications.Count
-            },
-            sql_context = sqlContext,
-            agent_config = new
-            {
-                provider = agentConfig.Provider,
-                model = agentConfig.Model,
-                api_key = agentConfig.ApiKey,
-                temperature = agentConfig.Temperature,
-                max_tokens = agentConfig.MaxTokens
-            }
         };
     }
 

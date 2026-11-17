@@ -17,7 +17,7 @@ public class CommentsController : BaseApiController
     [HttpGet]
     public async Task<IActionResult> GetComments(int taskId)
     {
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
 
         var items = await _db.TaskComments
@@ -43,8 +43,10 @@ public class CommentsController : BaseApiController
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
 
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
+        if (string.IsNullOrWhiteSpace(dto.Content) || dto.Content.Length > 2000)
+            return BadRequest(new { message = "Comment content must be between 1 and 2000 characters." });
 
         var comment = new TaskComment
         {

@@ -28,13 +28,17 @@ public class TasksController : BaseApiController
     {
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized();
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         return Ok(await _taskService.GetTasksAsync(userId.Value, page, pageSize));
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetTask(int id)
     {
-        var task = await _taskService.GetByIdAsync(id);
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        var task = await _taskService.GetByIdAsync(id, userId.Value);
         if (task == null) return NotFound();
         return Ok(task);
     }
@@ -44,7 +48,12 @@ public class TasksController : BaseApiController
     public async Task<IActionResult> CreateTask([FromBody] CreateTaskDto dto)
     {
         var userId = GetCurrentUserId();
-        if (userId == null) return Unauthorized();
+        var companyId = GetCurrentCompanyId();
+        if (userId == null || companyId == null) return Unauthorized();
+        if (!await _db.Projects.AnyAsync(p => p.ProjectId == dto.ProjectId && p.CompanyId == companyId.Value) ||
+            !await _db.Users.AnyAsync(u => u.UserId == dto.AssignedTo && u.CompanyId == companyId.Value && u.IsActive))
+            return BadRequest(new { message = "The selected project and assignee must belong to your company." });
+
         var task = await _taskService.CreateAsync(dto, userId.Value);
         await AuditLogWriter.WriteAsync(
             _db,
@@ -58,11 +67,19 @@ public class TasksController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] CreateTaskDto dto)
     {
         var userId = GetCurrentUserId();
-        var before = await _taskService.GetByIdAsync(id);
-        var task = await _taskService.UpdateAsync(id, dto);
+        var companyId = GetCurrentCompanyId();
+        if (userId == null || companyId == null) return Unauthorized();
+        var before = await _taskService.GetByIdAsync(id, userId.Value);
+        if (before == null) return NotFound();
+        if (!await _db.Projects.AnyAsync(p => p.ProjectId == dto.ProjectId && p.CompanyId == companyId.Value) ||
+            !await _db.Users.AnyAsync(u => u.UserId == dto.AssignedTo && u.CompanyId == companyId.Value && u.IsActive))
+            return BadRequest(new { message = "The selected project and assignee must belong to your company." });
+
+        var task = await _taskService.UpdateAsync(id, dto, userId.Value);
         if (task == null) return NotFound();
         await AuditLogWriter.WriteAsync(
             _db,
@@ -81,8 +98,9 @@ public class TasksController : BaseApiController
     public async Task<IActionResult> DeleteTask(int id)
     {
         var userId = GetCurrentUserId();
-        var before = await _taskService.GetByIdAsync(id);
-        if (!await _taskService.DeleteAsync(id)) return NotFound();
+        if (userId == null) return Unauthorized();
+        var before = await _taskService.GetByIdAsync(id, userId.Value);
+        if (before == null || !await _taskService.DeleteAsync(id, userId.Value)) return NotFound();
         await AuditLogWriter.WriteAsync(
             _db,
             HttpContext,
@@ -98,8 +116,10 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}/progress")]
     public async Task<IActionResult> GetProgress(int id)
     {
-        var progress = await _taskService.GetProgressAsync(id);
-        return Ok(progress);
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (await _taskService.GetByIdAsync(id, userId.Value) == null) return NotFound();
+        return Ok(await _taskService.GetProgressAsync(id, userId.Value));
     }
 
     [HttpPost("{id:int}/progress")]
@@ -128,6 +148,10 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}/guidance")]
     public async Task<IActionResult> GetGuidance(int id)
     {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (await _taskService.GetByIdAsync(id, userId.Value) == null) return NotFound();
+
         var latest = await _db.AIActionsLogs
             .Where(a => a.ActionType == 1 && a.TaskId == id)
             .OrderByDescending(a => a.Timestamp)
@@ -142,7 +166,8 @@ public class TasksController : BaseApiController
     {
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (userId == null || companyId == null) return Unauthorized();
+        if (await _taskService.GetByIdAsync(id, userId.Value) == null) return NotFound();
         var task = await _db.Tasks
             .Include(t => t.Project)
             .Include(t => t.Subtasks)
@@ -309,7 +334,8 @@ public class TasksController : BaseApiController
     {
         var userId = GetCurrentUserId();
         var companyId = GetCurrentCompanyId();
-        if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
+        if (userId == null || companyId == null) return Unauthorized();
+        if (await _taskService.GetByIdAsync(id, userId.Value) == null) return NotFound();
         var task = await _db.Tasks
             .Include(t => t.TaskProgresses)
             .FirstOrDefaultAsync(t => t.TaskId == id);
@@ -424,6 +450,10 @@ public class TasksController : BaseApiController
     [HttpGet("{id:int}/progress/ai-analysis")]
     public async Task<IActionResult> GetLatestProgressAnalysis(int id)
     {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+        if (await _taskService.GetByIdAsync(id, userId.Value) == null) return NotFound();
+
         var latest = await _db.AIActionsLogs
             .Where(a => a.ActionType == 2 && a.TaskId == id)
             .OrderByDescending(a => a.Timestamp)

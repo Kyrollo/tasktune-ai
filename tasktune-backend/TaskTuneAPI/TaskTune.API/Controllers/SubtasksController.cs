@@ -17,7 +17,7 @@ public class SubtasksController : BaseApiController
     [HttpGet]
     public async Task<IActionResult> GetSubtasks(int taskId)
     {
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
 
         var items = await _db.Subtasks
@@ -42,7 +42,7 @@ public class SubtasksController : BaseApiController
     [HttpPost]
     public async Task<IActionResult> CreateSubtask(int taskId, [FromBody] CreateSubtaskDto dto)
     {
-        var task = await _db.Tasks.FindAsync(taskId);
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.TaskId == taskId);
         if (task == null) return NotFound();
 
         var maxOrder = await _db.Subtasks

@@ -36,7 +36,7 @@ public sealed class AuthServiceTests
             new LoginRequestDto("employee@tasktune.test", "Correct-Horse-Battery-42!"));
 
         Assert.NotNull(login);
-        var storedAfterLogin = await context.Users.SingleAsync();
+        var storedAfterLogin = await context.Users.IgnoreQueryFilters().SingleAsync();
         Assert.Matches("^[A-F0-9]{64}$", storedAfterLogin.RefreshToken!);
         Assert.NotEqual(login.RefreshToken, storedAfterLogin.RefreshToken);
         Assert.InRange((login.ExpiresAt - DateTime.UtcNow).TotalMinutes, 18, 20);
@@ -47,7 +47,7 @@ public sealed class AuthServiceTests
         Assert.NotEqual(login.RefreshToken, refreshed.RefreshToken);
         Assert.Null(await service.RefreshTokenAsync(login.RefreshToken));
 
-        var storedAfterRefresh = await context.Users.SingleAsync();
+        var storedAfterRefresh = await context.Users.IgnoreQueryFilters().SingleAsync();
         Assert.Matches("^[A-F0-9]{64}$", storedAfterRefresh.RefreshToken!);
         Assert.NotEqual(refreshed.RefreshToken, storedAfterRefresh.RefreshToken);
     }

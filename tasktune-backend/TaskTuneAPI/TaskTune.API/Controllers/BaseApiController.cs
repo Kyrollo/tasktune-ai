@@ -44,24 +44,21 @@ public abstract class BaseApiController : ControllerBase
     protected async Task<bool> HasPageAccessAsync(TaskTuneDbContext db, string resource, params string[] privilegedRoles)
     {
         var currentRole = GetCurrentRole();
-        if (!string.IsNullOrWhiteSpace(currentRole) &&
-            privilegedRoles.Any(role => string.Equals(role, currentRole, StringComparison.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
         var companyId = GetCurrentCompanyId();
         var roleByte = GetCurrentRoleByte();
-        if (companyId == null || roleByte == null)
-        {
+        if (companyId == null || roleByte == null || string.IsNullOrWhiteSpace(currentRole))
             return false;
-        }
+
+        var hasExplicitDeny = await db.RolePermissions.AnyAsync(rp =>
+            rp.CompanyId == companyId.Value && rp.Role == roleByte.Value &&
+            rp.Resource == resource && (rp.Action == "access" || rp.Action == "read") && !rp.CanPerform);
+        if (hasExplicitDeny) return false;
+
+        if (privilegedRoles.Any(role => string.Equals(role, currentRole, StringComparison.OrdinalIgnoreCase)))
+            return true;
 
         return await db.RolePermissions.AnyAsync(rp =>
-            rp.CompanyId == companyId.Value &&
-            rp.Role == roleByte.Value &&
-            rp.Resource == resource &&
-            (rp.Action == "access" || rp.Action == "read") &&
-            rp.CanPerform);
+            rp.CompanyId == companyId.Value && rp.Role == roleByte.Value &&
+            rp.Resource == resource && (rp.Action == "access" || rp.Action == "read") && rp.CanPerform);
     }
 }

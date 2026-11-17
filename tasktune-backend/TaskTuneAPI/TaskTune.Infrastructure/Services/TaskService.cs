@@ -49,15 +49,14 @@ public class TaskService : ITaskService
             tasks, totalCount, page, pageSize, (int)Math.Ceiling((double)totalCount / pageSize));
     }
 
-    public async Task<TaskResponseDto?> GetByIdAsync(int taskId)
+    public async Task<TaskResponseDto?> GetByIdAsync(int taskId, int requestedBy)
     {
-        var task = await _context.Tasks
-            .Include(t => t.Project)
-            .Include(t => t.AssignedToNavigation)
-            .FirstOrDefaultAsync(t => t.TaskId == taskId);
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == requestedBy);
+        if (user == null) return null;
 
-        if (task == null)
-            return null;
+        var query = _context.Tasks.Include(t => t.Project).Include(t => t.AssignedToNavigation);
+        var task = await ApplyTaskScope(query, user).FirstOrDefaultAsync(t => t.TaskId == taskId);
+        if (task == null) return null;
 
         var aiRecommendation = await GetLatestAiRecommendationAsync(task.TaskId);
         return MapTaskResponse(task, aiRecommendation);
@@ -65,6 +64,15 @@ public class TaskService : ITaskService
 
     public async Task<TaskResponseDto> CreateAsync(CreateTaskDto dto, int createdBy)
     {
+        if (_context.CurrentTenantId is not int companyId)
+            throw new UnauthorizedAccessException("A valid tenant context is required.");
+
+        var creatorExists = await _context.Users.AnyAsync(u => u.UserId == createdBy && u.CompanyId == companyId && u.IsActive);
+        var projectExists = await _context.Projects.AnyAsync(p => p.ProjectId == dto.ProjectId && p.CompanyId == companyId);
+        var assigneeExists = await _context.Users.AnyAsync(u => u.UserId == dto.AssignedTo && u.CompanyId == companyId && u.IsActive);
+        if (!creatorExists || !projectExists || !assigneeExists)
+            throw new ArgumentException("The project, creator, and assignee must belong to the authenticated company.");
+
         var task = new Models.Task
         {
             ProjectId = dto.ProjectId,
@@ -133,14 +141,19 @@ public class TaskService : ITaskService
         await _context.SaveChangesAsync();
 
         // Reload with navigation properties
-        var result = await GetByIdAsync(task.TaskId);
+        var result = await GetByIdAsync(task.TaskId, createdBy);
         return result!;
     }
 
-    public async Task<TaskResponseDto?> UpdateAsync(int taskId, CreateTaskDto dto)
+    public async Task<TaskResponseDto?> UpdateAsync(int taskId, CreateTaskDto dto, int updatedBy)
     {
-        var task = await _context.Tasks.FindAsync(taskId);
-        if (task == null)
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == updatedBy);
+        if (user == null || user.Role is not (1 or 2 or 4 or 5)) return null;
+
+        var task = await ApplyTaskScope(_context.Tasks, user).FirstOrDefaultAsync(t => t.TaskId == taskId);
+        if (task == null) return null;
+        if (!await _context.Projects.AnyAsync(p => p.ProjectId == dto.ProjectId) ||
+            !await _context.Users.AnyAsync(u => u.UserId == dto.AssignedTo && u.IsActive))
             return null;
 
         task.ProjectId = dto.ProjectId;
@@ -177,14 +190,16 @@ public class TaskService : ITaskService
         }
 
         await _context.SaveChangesAsync();
-        return await GetByIdAsync(taskId);
+        return await GetByIdAsync(taskId, updatedBy);
     }
 
-    public async Task<bool> DeleteAsync(int taskId)
+    public async Task<bool> DeleteAsync(int taskId, int deletedBy)
     {
-        var task = await _context.Tasks.FindAsync(taskId);
-        if (task == null)
-            return false;
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == deletedBy);
+        if (user == null || user.Role is not (1 or 2 or 4 or 5)) return false;
+
+        var task = await ApplyTaskScope(_context.Tasks, user).FirstOrDefaultAsync(t => t.TaskId == taskId);
+        if (task == null) return false;
 
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync();
@@ -193,11 +208,11 @@ public class TaskService : ITaskService
 
     public async Task<bool> SubmitProgressAsync(int taskId, SubmitProgressDto dto, int userId)
     {
-        var task = await _context.Tasks.FindAsync(taskId);
-        if (task == null)
-            return false;
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user == null) return false;
 
-        if (task.AssignedTo != userId)
+        var task = await ApplyTaskScope(_context.Tasks, user).FirstOrDefaultAsync(t => t.TaskId == taskId);
+        if (task == null || task.AssignedTo != userId)
             return false;
 
         var progress = new TaskProgress
@@ -221,8 +236,12 @@ public class TaskService : ITaskService
         return true;
     }
 
-    public async Task<object> GetProgressAsync(int taskId)
+    public async Task<object> GetProgressAsync(int taskId, int requestedBy)
     {
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == requestedBy);
+        if (user == null || !await ApplyTaskScope(_context.Tasks, user).AnyAsync(t => t.TaskId == taskId))
+            return Array.Empty<object>();
+
         var items = await _context.TaskProgresses
             .Where(tp => tp.TaskId == taskId)
             .OrderByDescending(tp => tp.SubmittedAt)
