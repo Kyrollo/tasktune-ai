@@ -74,7 +74,6 @@ public sealed class CommunicationOutboxWorker(
         var leaseToken = Guid.NewGuid();
 
         var claimed = await db.CommunicationOutbox
-            .IgnoreQueryFilters()
             .FromSqlInterpolated($"""
                 ;WITH next_row AS
                 (
@@ -96,6 +95,7 @@ public sealed class CommunicationOutboxWorker(
                     LeaseExpiresAt = DATEADD(SECOND, {leaseSeconds}, SYSUTCDATETIME())
                 OUTPUT INSERTED.*;
                 """)
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 

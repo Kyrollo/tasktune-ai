@@ -103,7 +103,7 @@ This repository has passing CI evidence for the implemented phases, but CI does 
 
 - Added regression tests for maker-checker separation, tenant scoping, one-time approval/rejection, per-recipient outbox creation and deterministic idempotency keys.
 - Approval/outbox foundation commit `65652dceb4af68744d8490f86ca91e11deae1dbd` passed all three GitHub Actions jobs in run [#44182304265](https://github.com/Kyrollo/tasktune-ai/actions/runs/44182304265): API build and regression tests, frontend lint/build, and Python syntax/tests.
-- Dispatcher commit is verified by SQL Server CI concurrency tests added for competing worker claims and expired-lease reclamation; run details are recorded after completion.
+- Dispatcher commit initially exposed a compile-time query-chain error in the atomic claim method. The follow-up fix moves `FromSqlInterpolated` to the `DbSet` root before applying `IgnoreQueryFilters`; the corrected commit is now under CI verification. The SQL Server concurrency test covers competing worker claims and expired-lease reclamation.
 - The SQL Server lease migration must still be applied and rehearsed in a backed-up deployment environment before enabling SMTP.
 
 ## Remaining implementation and production gates
