@@ -7,6 +7,7 @@ namespace TaskTune.API.Support;
 public sealed class CompanyWorkCalendarSettings
 {
     public List<int> WeekendDays { get; set; } = [0, 6];
+    public string TimeZoneId { get; set; } = "UTC";
 }
 
 public static class WorkCalendarSettingsStore
@@ -37,7 +38,15 @@ public static class WorkCalendarSettingsStore
                 weekendDays.Count > 3)
                 return new CompanyWorkCalendarSettings();
 
-            return new CompanyWorkCalendarSettings { WeekendDays = weekendDays.OrderBy(x => x).ToList() };
+            var timeZoneId = node?["timeZoneId"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(timeZoneId) || !TryGetTimeZone(timeZoneId, out _))
+                timeZoneId = "UTC";
+
+            return new CompanyWorkCalendarSettings
+            {
+                WeekendDays = weekendDays.OrderBy(x => x).ToList(),
+                TimeZoneId = timeZoneId
+            };
         }
         catch
         {
@@ -46,7 +55,7 @@ public static class WorkCalendarSettingsStore
     }
 
     public static async Task<CompanyWorkCalendarSettings> SaveAsync(
-        TaskTuneDbContext db, int companyId, IReadOnlyCollection<int> weekendDays)
+        TaskTuneDbContext db, int companyId, IReadOnlyCollection<int> weekendDays, string? timeZoneId = null)
     {
         if (weekendDays.Count is < 1 or > 3 ||
             weekendDays.Any(x => x is < 0 or > 6) ||
@@ -74,14 +83,46 @@ public static class WorkCalendarSettingsStore
             }
         }
 
+        var existingTimeZoneId = root["workCalendar"]?["timeZoneId"]?.GetValue<string>();
+        var selectedTimeZoneId = string.IsNullOrWhiteSpace(timeZoneId)
+            ? (string.IsNullOrWhiteSpace(existingTimeZoneId) ? "UTC" : existingTimeZoneId.Trim())
+            : timeZoneId.Trim();
+
+        if (!TryGetTimeZone(selectedTimeZoneId, out _))
+            throw new ArgumentException("The time zone ID is not recognized by this server. Use a time zone ID from the server's available time zones.", nameof(timeZoneId));
+
         root["workCalendar"] = new JsonObject
         {
-            ["weekendDays"] = new JsonArray(weekendDays.OrderBy(x => x).Select(x => (JsonNode?)JsonValue.Create(x)).ToArray())
+            ["weekendDays"] = new JsonArray(weekendDays.OrderBy(x => x).Select(x => (JsonNode?)JsonValue.Create(x)).ToArray()),
+            ["timeZoneId"] = selectedTimeZoneId
         };
         company.SettingsJson = root.ToJsonString();
         company.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return new CompanyWorkCalendarSettings { WeekendDays = weekendDays.OrderBy(x => x).ToList() };
+        return new CompanyWorkCalendarSettings
+        {
+            WeekendDays = weekendDays.OrderBy(x => x).ToList(),
+            TimeZoneId = selectedTimeZoneId
+        };
+    }
+
+    public static bool TryGetTimeZone(string timeZoneId, out TimeZoneInfo timeZone)
+    {
+        try
+        {
+            timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return false;
+        }
     }
 }
