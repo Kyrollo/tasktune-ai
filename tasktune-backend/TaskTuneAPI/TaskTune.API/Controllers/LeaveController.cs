@@ -551,6 +551,7 @@ public sealed class LeaveController : BaseApiController
         return Ok(new
         {
             weekendDays = settings.WeekendDays,
+            timeZoneId = settings.TimeZoneId,
             dayNames = settings.WeekendDays.Select(day => ((DayOfWeek)day).ToString()).ToList()
         });
     }
@@ -566,12 +567,12 @@ public sealed class LeaveController : BaseApiController
         try
         {
             var before = await WorkCalendarSettingsStore.LoadAsync(_db, companyId.Value);
-            var saved = await WorkCalendarSettingsStore.SaveAsync(_db, companyId.Value, request.WeekendDays);
+            var saved = await WorkCalendarSettingsStore.SaveAsync(_db, companyId.Value, request.WeekendDays, request.TimeZoneId);
             await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, "UPDATE", "CompanyWorkCalendar", companyId.Value,
                 before: new { before.WeekendDays },
                 after: new { saved.WeekendDays });
 
-            return Ok(new { weekendDays = saved.WeekendDays });
+            return Ok(new { weekendDays = saved.WeekendDays, timeZoneId = saved.TimeZoneId });
         }
         catch (ArgumentException ex)
         {
@@ -749,4 +750,4 @@ public sealed record CreateLeaveRequest(int LeaveTypeId, DateOnly StartDate, Dat
 public sealed record LeaveDecisionRequest(bool Approve, string? Comment);
 public sealed record CancelLeaveRequest(string? Reason);
 public sealed record CreateCompanyHolidayRequest(string Name, DateOnly HolidayDate, bool IsRecurring);
-public sealed record UpdateWorkCalendarRequest(List<int> WeekendDays);
+public sealed record UpdateWorkCalendarRequest(List<int> WeekendDays, string? TimeZoneId = null);
