@@ -284,7 +284,7 @@ public class ReportsController : BaseApiController
         if (string.IsNullOrWhiteSpace(idempotencyKey))
             idempotencyKey = $"ai:report:{Guid.NewGuid():N}";
         else
-            idempotencyKey = $"ai:report:{idempotencyKey}";
+            idempotencyKey = $"ai:report:{userId.Value}:{idempotencyKey}";
         if (idempotencyKey.Length > 160)
             return BadRequest(new { message = "Idempotency-Key must not exceed 144 characters." });
 
