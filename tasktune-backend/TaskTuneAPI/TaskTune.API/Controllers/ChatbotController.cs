@@ -239,6 +239,99 @@ public class ChatbotController : BaseApiController
         };
     }
 
+    private async Task<ChatbotAgentResponse?> TryGetAgentResponseAsync(object payload, AIAgentConfig config)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
+            var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
+            var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<ChatbotAgentResponse>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private object BuildAgentPayload(User user, ChatThread thread, string message, ChatScope scope, object? sqlContext, AIAgentConfig agentConfig)
+    {
+        var history = _db.ChatMessages
+            .Where(m => m.ThreadId == thread.ThreadId && !m.IsDeleted)
+            .OrderByDescending(m => m.SentAt)
+            .Take(12)
+            .AsEnumerable()
+            .OrderBy(m => m.SentAt)
+            .Select(m => new
+            {
+                role = m.Role == 0 ? "user" : "assistant",
+                content = m.Content,
+                sent_at = m.SentAt
+            })
+            .ToList();
+
+        var focusedTask = thread.RelatedTaskId.HasValue
+            ? scope.Tasks.FirstOrDefault(t => t.TaskId == thread.RelatedTaskId.Value)
+            : null;
+
+        var focusedProject = thread.RelatedProjectId.HasValue
+            ? scope.Projects.FirstOrDefault(p => p.ProjectId == thread.RelatedProjectId.Value)
+            : null;
+
+        return new
+        {
+            message,
+            current_date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+            user = new
+            {
+                id = user.UserId,
+                name = user.FullName ?? (user.FirstName + " " + user.LastName),
+                email = user.Email,
+                role = GetRoleName(user.Role),
+                department = user.Department != null ? user.Department.DepartmentName : "Unassigned",
+                position = user.Position != null ? user.Position.PositionTitle : "N/A"
+            },
+            thread = new
+            {
+                id = thread.ThreadId,
+                title = thread.Title,
+                related_task_id = thread.RelatedTaskId,
+                related_project_id = thread.RelatedProjectId
+            },
+            history,
+            scope,
+            focus = new
+            {
+                task = focusedTask,
+                project = focusedProject
+            },
+            available_data = new
+            {
+                task_count = scope.Tasks.Count,
+                project_count = scope.Projects.Count,
+                employee_count = scope.EmployeeDirectory.Count,
+                evaluation_count = scope.Evaluations.Count,
+                report_count = scope.Reports.Count,
+                notification_count = scope.Notifications.Count
+            },
+            sql_context = sqlContext,
+            agent_config = new
+            {
+                provider = agentConfig.Provider,
+                model = agentConfig.Model,
+                api_key = agentConfig.ApiKey,
+                temperature = agentConfig.Temperature,
+                max_tokens = agentConfig.MaxTokens
+            }
+        };
+    }
+
     private static string BuildFallbackReply(User user, ChatThread thread, string message, ChatScope scope)
     {
         var lower = message.ToLowerInvariant();
