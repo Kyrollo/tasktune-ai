@@ -14,11 +14,6 @@ const formatBytes = (value) => {
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
 
-const quotaLabel = (used, limit, suffix = '') => {
-  if (limit == null) return `${used}${suffix} used · Unlimited`;
-  return `${used}${suffix} of ${limit}${suffix}`;
-};
-
 function Meter({ title, detail, used, limit, icon: Icon, format = (v) => String(v) }) {
   const percentage = limit == null || limit <= 0 ? 0 : Math.min(100, Math.max(0, (Number(used || 0) / Number(limit)) * 100));
   const iconElement = Icon ? createElement(Icon, { size: 18, className: 'text-orange' }) : null;
