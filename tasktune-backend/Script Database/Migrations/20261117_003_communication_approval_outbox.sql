@@ -60,7 +60,7 @@ BEGIN
         CONSTRAINT FK_CommunicationOutbox_Approvals FOREIGN KEY (ApprovalId)
             REFERENCES dbo.CommunicationApprovals(ApprovalId),
         CONSTRAINT FK_CommunicationOutbox_Communications FOREIGN KEY (CommunicationId)
-            REFERENCES dbo.CommunicationLogs(CommunicationId),
+            REFERENCES dbo.CommunicationLog(CommunicationId),
         CONSTRAINT FK_CommunicationOutbox_Recipient FOREIGN KEY (RecipientUserId)
             REFERENCES dbo.Users(UserId),
         CONSTRAINT CK_CommunicationOutbox_Status CHECK

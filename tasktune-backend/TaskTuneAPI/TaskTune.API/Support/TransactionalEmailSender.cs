@@ -6,16 +6,18 @@ namespace TaskTune.API.Support;
 
 public interface ITransactionalEmailSender
 {
-    Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken = default);
-    Task SendCommunicationAsync(string recipient, string subject, string body, IReadOnlyCollection<string>? ccRecipients, CancellationToken cancellationToken = default);
+    Task SendAsync(
+        string recipient,
+        string subject,
+        string body,
+        CancellationToken cancellationToken = default);
 
     Task SendAsync(
         string recipient,
         string subject,
         string body,
-        IReadOnlyCollection<string> ccRecipients,
-        CancellationToken cancellationToken = default) =>
-        SendAsync(recipient, subject, body, cancellationToken);
+        IReadOnlyCollection<string>? ccRecipients,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class SmtpTransactionalEmailSender(IConfiguration configuration) : ITransactionalEmailSender
@@ -25,13 +27,13 @@ public sealed class SmtpTransactionalEmailSender(IConfiguration configuration) :
         string subject,
         string body,
         CancellationToken cancellationToken = default) =>
-        SendAsync(recipient, subject, body, Array.Empty<string>(), cancellationToken);
+        SendAsync(recipient, subject, body, null, cancellationToken);
 
     public async Task SendAsync(
         string recipient,
         string subject,
         string body,
-        IReadOnlyCollection<string> ccRecipients,
+        IReadOnlyCollection<string>? ccRecipients,
         CancellationToken cancellationToken = default)
     {
         var host = configuration["Email:Smtp:Host"];
@@ -53,19 +55,16 @@ public sealed class SmtpTransactionalEmailSender(IConfiguration configuration) :
         {
             IsBodyHtml = false
         };
-        foreach (var cc in ccRecipients.Distinct(StringComparer.OrdinalIgnoreCase))
+
+        foreach (var cc in (ccRecipients ?? Array.Empty<string>())
+                     .Where(value => !string.IsNullOrWhiteSpace(value))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (!MailAddress.TryCreate(cc, out var validatedCc) ||
                 !string.Equals(validatedCc.Address, cc, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("A delivery CC address is invalid.");
             if (!string.Equals(cc, recipient, StringComparison.OrdinalIgnoreCase))
-                message.CC.Add(cc);
-        }
-        if (ccRecipients != null)
-        {
-            foreach (var cc in ccRecipients.Where(value => !string.IsNullOrWhiteSpace(value))
-                         .Distinct(StringComparer.OrdinalIgnoreCase).Take(25))
-                message.CC.Add(new MailAddress(cc));
+                message.CC.Add(validatedCc);
         }
 
         using var client = new SmtpClient(host, port)

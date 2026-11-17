@@ -70,10 +70,6 @@ public partial class TaskTuneDbContext : DbContext
     public virtual DbSet<CommunicationApproval> CommunicationApprovals { get; set; }
     public virtual DbSet<CommunicationOutbox> CommunicationOutbox { get; set; }
 
-    public virtual DbSet<CommunicationApproval> CommunicationApprovals { get; set; }
-
-    public virtual DbSet<CommunicationOutbox> CommunicationOutbox { get; set; }
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AIActionsLog>(entity =>
@@ -702,14 +698,14 @@ public partial class TaskTuneDbContext : DbContext
         modelBuilder.Entity<AccountSecurityToken>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<CommunicationApproval>().HasQueryFilter(e => TenantIdOrDefault > 0
-            && e.CompanyId == TenantIdOrDefault);
-        modelBuilder.Entity<CommunicationOutbox>().HasQueryFilter(e => TenantIdOrDefault > 0
-            && e.CompanyId == TenantIdOrDefault);
-        modelBuilder.Entity<CommunicationApproval>().HasQueryFilter(e => TenantIdOrDefault > 0
-            && e.CompanyId == TenantIdOrDefault);
+            && e.CompanyId == TenantIdOrDefault
+            && e.RequestedBy.CompanyId == TenantIdOrDefault
+            && (!e.ReviewedByUserId.HasValue || e.ReviewedBy.CompanyId == TenantIdOrDefault));
         modelBuilder.Entity<CommunicationOutbox>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.CompanyId == TenantIdOrDefault
-            && e.Approval.CompanyId == TenantIdOrDefault);
+            && e.Approval.CompanyId == TenantIdOrDefault
+            && e.Communication.CompanyId == TenantIdOrDefault
+            && e.RecipientUser.CompanyId == TenantIdOrDefault);
 
         modelBuilder.Entity<UserSession>(entity =>
         {
@@ -746,44 +742,6 @@ public partial class TaskTuneDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<Position>().WithMany().HasForeignKey(e => e.PositionId)
                 .OnDelete(DeleteBehavior.NoAction);
-        });
-
-        modelBuilder.Entity<CommunicationApproval>(entity =>
-        {
-            entity.ToTable("CommunicationApprovals");
-            entity.HasKey(e => e.ApprovalId);
-            entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(128);
-            entity.Property(e => e.RecipientType).IsRequired().HasMaxLength(40);
-            entity.Property(e => e.ReviewNote).HasMaxLength(500);
-            entity.Property(e => e.RowVersion).IsRowVersion();
-            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
-            entity.HasIndex(e => new { e.CompanyId, e.Status, e.CreatedAt });
-            entity.HasIndex(e => e.CommunicationId).IsUnique();
-            entity.HasOne(e => e.Communication).WithMany().HasForeignKey(e => e.CommunicationId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId)
-                .OnDelete(DeleteBehavior.NoAction);
-            entity.HasOne(e => e.RequestedByNavigation).WithMany().HasForeignKey(e => e.RequestedByUserId)
-                .OnDelete(DeleteBehavior.NoAction);
-            entity.HasOne(e => e.ReviewedByNavigation).WithMany().HasForeignKey(e => e.ReviewedByUserId)
-                .OnDelete(DeleteBehavior.NoAction);
-        });
-
-        modelBuilder.Entity<CommunicationOutbox>(entity =>
-        {
-            entity.ToTable("CommunicationOutbox");
-            entity.HasKey(e => e.OutboxId);
-            entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(160);
-            entity.Property(e => e.RecipientEmail).IsRequired().HasMaxLength(255);
-            entity.Property(e => e.CcEmailsJson).IsRequired().HasMaxLength(4000);
-            entity.Property(e => e.Subject).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Body).IsRequired();
-            entity.Property(e => e.LastError).HasMaxLength(500);
-            entity.Property(e => e.RowVersion).IsRowVersion();
-            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
-            entity.HasIndex(e => new { e.ApprovalId, e.Status });
-            entity.HasOne(e => e.Approval).WithMany(a => a.OutboxItems).HasForeignKey(e => e.ApprovalId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CommunicationApproval>(entity =>
