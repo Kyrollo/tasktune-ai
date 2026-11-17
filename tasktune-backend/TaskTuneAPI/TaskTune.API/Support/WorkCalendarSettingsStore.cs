@@ -11,8 +11,6 @@ public sealed class CompanyWorkCalendarSettings
 
 public static class WorkCalendarSettingsStore
 {
-    private static readonly int[] DefaultWeekendDays = [0, 6];
-
     public static async Task<CompanyWorkCalendarSettings> LoadAsync(TaskTuneDbContext db, int companyId)
     {
         var json = await db.Companies.AsNoTracking()
