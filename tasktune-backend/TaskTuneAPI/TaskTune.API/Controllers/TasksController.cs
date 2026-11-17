@@ -225,7 +225,7 @@ public class TasksController : BaseApiController
             if (!response.IsSuccessStatusCode)
             {
                 var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "AI agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "AI agent returned an error." });
             }
             var result = await response.Content.ReadFromJsonAsync<object>() ?? new { guidance_text = "", suggested_subtasks = Array.Empty<string>() };
             if (userId != null)
@@ -235,7 +235,18 @@ public class TasksController : BaseApiController
                     ActionType = 1,
                     TaskId = id,
                     UserId = userId.Value,
-                    InputData = JsonSerializer.Serialize(payload),
+                    InputData = JsonSerializer.Serialize(new
+                    {
+                        payload.task_name,
+                        payload.description,
+                        payload.subtasks,
+                        payload.definition_of_done,
+                        payload.due_date,
+                        payload.dependencies,
+                        payload.industry,
+                        payload.user_role,
+                        payload.completion_percentage
+                    }),
                     OutputData = JsonSerializer.Serialize(result),
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
@@ -254,7 +265,7 @@ public class TasksController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { message = "Failed to reach AI guidance agent.", detail = ex.Message });
+            return StatusCode(502, new { message = "Failed to reach AI guidance agent." });
         }
     }
 
@@ -414,7 +425,7 @@ public class TasksController : BaseApiController
             if (!response.IsSuccessStatusCode)
             {
                 var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "AI progress agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "AI progress agent returned an error." });
             }
             var result = await response.Content.ReadFromJsonAsync<object>();
             if (userId != null && result != null)
@@ -424,7 +435,18 @@ public class TasksController : BaseApiController
                     ActionType = 2,
                     TaskId = id,
                     UserId = userId.Value,
-                    InputData = JsonSerializer.Serialize(taskPayload),
+                    InputData = JsonSerializer.Serialize(new
+                    {
+                        taskPayload.task_id,
+                        taskPayload.task_title,
+                        taskPayload.task_description,
+                        taskPayload.current_completion_percentage,
+                        taskPayload.start_date,
+                        taskPayload.due_date,
+                        taskPayload.progress_updates,
+                        taskPayload.current_blockers,
+                        taskPayload.user_performance_history
+                    }),
                     OutputData = JsonSerializer.Serialize(result),
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
@@ -443,7 +465,7 @@ public class TasksController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { message = "Failed to reach AI progress agent.", detail = ex.Message });
+            return StatusCode(502, new { message = "Failed to reach AI progress agent." });
         }
     }
 

@@ -222,7 +222,7 @@ public class CommunicationsController : BaseApiController
             if (!response.IsSuccessStatusCode)
             {
                 var err = await response.Content.ReadAsStringAsync();
-                return StatusCode(502, new { message = "Email agent returned an error.", detail = err });
+                return StatusCode(502, new { message = "Email agent returned an error." });
             }
 
             var result = await response.Content.ReadFromJsonAsync<object>();
@@ -230,7 +230,17 @@ public class CommunicationsController : BaseApiController
             {
                 ActionType = 5,
                 UserId = userId.Value,
-                InputData = JsonSerializer.Serialize(payload),
+                InputData = JsonSerializer.Serialize(new
+                {
+                    payload.communication_type,
+                    payload.recipient_type,
+                    payload.template,
+                    payload.current_subject,
+                    payload.current_body,
+                    payload.prompt,
+                    payload.sender,
+                    payload.recipients
+                }),
                 OutputData = JsonSerializer.Serialize(result),
                 ModelVersion = agentConfig.Model,
                 Timestamp = DateTime.UtcNow
@@ -241,7 +251,7 @@ public class CommunicationsController : BaseApiController
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { message = "Failed to reach AI email agent.", detail = ex.Message });
+            return StatusCode(502, new { message = "Failed to reach AI email agent." });
         }
     }
 
