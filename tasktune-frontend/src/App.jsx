@@ -26,6 +26,7 @@ import OrgChart from './pages/shared/OrgChart';
 import EmployeeProfile from './pages/shared/EmployeeProfile';
 import Notifications from './pages/shared/Notifications';
 import Settings from './pages/shared/Settings';
+import LeaveCenter from './pages/shared/LeaveCenter';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, getDefaultRoute, canAccessRoute, permissions, permissionsLoaded } = useAuth();
@@ -86,6 +87,7 @@ export default function App() {
       <Route path="/directory" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
       <Route path="/profile/:id" element={<ProtectedRoute><EmployeeProfile /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+      <Route path="/leave" element={<ProtectedRoute><LeaveCenter /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
       {/* Fallback */}
