@@ -34,6 +34,8 @@ Run these scripts in order, once per database. They are intended to be additive 
    - Normalizes older plan records to the canonical `reports` module code.
 6. `20261117_AddAttendanceAndShiftManagement.sql`
    - Work shifts, effective-dated employee shift assignments and UTC attendance punches.
+7. `20261117_AllowSystemAttendanceCaptureSource.sql`
+   - Allows server-generated schedule rows to be marked with capture source `system`.
 
 Do not run the old destructive database setup script against a production database.
 
@@ -41,7 +43,7 @@ Do not run the old destructive database setup script against a production databa
 
 1. Log in as a company Admin or CEO and open **Leave Management**.
 2. Configure the company's weekend days, company time zone (for example `Africa/Cairo`), add company holidays, create leave types and allocate annual balances to employees.
-3. In **Attendance & Shifts**, create work shifts and assign them to employees with the correct weekdays and effective dates before enabling clock-in/out.
+3. In **Attendance & Shifts**, create work shifts and assign them to employees with the correct weekdays and effective dates. HR can generate scheduled records for selected periods and reconcile missed shifts after the shift end plus grace period.
 4. Open **Subscription & Usage** as a company Admin/CEO to view the assigned plan and current measured usage.
 5. The platform operator assigns or changes a tenant plan through the secret-protected API:
    - `GET /api/platform/plans`
