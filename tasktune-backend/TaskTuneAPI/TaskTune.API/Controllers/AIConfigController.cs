@@ -50,7 +50,7 @@ public class AIConfigController : BaseApiController
         if (userId == null) return Unauthorized();
         if (incoming == null) return BadRequest(new { message = "Configuration payload is required." });
 
-        var before = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var before = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var saved = await AIConfigurationStore.SaveAsync(_db, companyId.Value, incoming, _configuration);
 
         _db.AIActionsLogs.Add(new AIActionsLog

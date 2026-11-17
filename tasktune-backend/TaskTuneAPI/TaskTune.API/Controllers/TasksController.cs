@@ -282,7 +282,7 @@ public class TasksController : BaseApiController
         var companyId = GetCurrentCompanyId();
         if (companyId == null) return BadRequest(new { message = "Company ID not found in token." });
 
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("task_guidance");
         if (!aiConfig.Enabled || !aiConfig.Features.TaskGuidance || !agentConfig.Enabled)
         {
@@ -357,7 +357,7 @@ public class TasksController : BaseApiController
             .FirstOrDefaultAsync(t => t.TaskId == id);
         if (task == null) return NotFound();
 
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("progress_tracking");
         if (!aiConfig.Enabled || !aiConfig.Features.RiskDetection || !agentConfig.Enabled)
         {

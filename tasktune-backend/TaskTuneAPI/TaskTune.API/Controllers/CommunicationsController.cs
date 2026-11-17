@@ -174,7 +174,7 @@ public class CommunicationsController : BaseApiController
             .Include(u => u.Department)
             .FirstOrDefaultAsync(u => u.UserId == userId.Value);
         if (sender == null) return Unauthorized();
-        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value);
+        var aiConfig = await AIConfigurationStore.LoadAsync(_db, companyId.Value, _configuration);
         var agentConfig = aiConfig.GetAgent("email_assistant");
         if (!aiConfig.Enabled || !aiConfig.Features.EmailAssistant || !agentConfig.Enabled)
         {
