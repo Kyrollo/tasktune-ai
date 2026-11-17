@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 
@@ -14,9 +15,14 @@ namespace TaskTune.API.Controllers;
 public class ChatbotController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
+    private readonly IConfiguration _configuration;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public ChatbotController(TaskTuneDbContext db) => _db = db;
+    public ChatbotController(TaskTuneDbContext db, IConfiguration configuration)
+    {
+        _db = db;
+        _configuration = configuration;
+    }
 
     [HttpGet("threads")]
     public async Task<IActionResult> GetThreads()
@@ -247,6 +253,7 @@ public class ChatbotController : BaseApiController
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            if (!AgentServiceSecurity.TryConfigure(http, _configuration)) return null;
             var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? "http://localhost:8001" : config.BaseUrl.TrimEnd('/');
             var endpoint = string.IsNullOrWhiteSpace(config.Endpoint) ? "/api/chat" : config.Endpoint;
             var response = await http.PostAsJsonAsync($"{baseUrl}{endpoint}", payload);

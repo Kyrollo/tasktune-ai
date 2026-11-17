@@ -9,7 +9,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 _agents_dir = Path(__file__).resolve().parent.parent
@@ -19,6 +18,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(_agents_dir))
 
 from agent2_task_guidance.graph import run_task_guidance
+from agent_security import add_agent_security
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,13 +56,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_agent_security(app)
+
 
 
 @app.post("/api/guidance", response_model=GuidanceResponse, summary="Generate task guidance")

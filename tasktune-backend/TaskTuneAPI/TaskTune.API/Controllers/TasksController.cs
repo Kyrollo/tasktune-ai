@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using TaskTune.Application.DTOs.Tasks;
 using TaskTune.Application.Interfaces;
@@ -16,11 +17,13 @@ public class TasksController : BaseApiController
 {
     private readonly ITaskService _taskService;
     private readonly TaskTuneDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public TasksController(ITaskService taskService, TaskTuneDbContext db)
+    public TasksController(ITaskService taskService, TaskTuneDbContext db, IConfiguration configuration)
     {
         _taskService = taskService;
         _db = db;
+        _configuration = configuration;
     }
 
     [HttpGet]
@@ -184,6 +187,8 @@ public class TasksController : BaseApiController
         }
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         var payload = new
         {
             task_name = task.TaskName,
@@ -415,6 +420,8 @@ public class TasksController : BaseApiController
         };
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+        if (!AgentServiceSecurity.TryConfigure(http, _configuration))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Private AI agent authentication is not configured." });
         try
         {
             var agentBaseUrl = string.IsNullOrWhiteSpace(agentConfig.BaseUrl)
