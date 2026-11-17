@@ -26,6 +26,7 @@ import OrgChart from './pages/shared/OrgChart';
 import EmployeeProfile from './pages/shared/EmployeeProfile';
 import Notifications from './pages/shared/Notifications';
 import Settings from './pages/shared/Settings';
+import SubscriptionOverview from './pages/admin/SubscriptionOverview';
 import LeaveCenter from './pages/shared/LeaveCenter';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -82,6 +83,7 @@ export default function App() {
       <Route path="/tasks-management" element={<ProtectedRoute><TasksManagement /></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><UsersManagement /></ProtectedRoute>} />
       <Route path="/admin/ai" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><AIControlPanel /></ProtectedRoute>} />
+      <Route path="/admin/subscription" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><SubscriptionOverview /></ProtectedRoute>} />
       <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['Supervisor','Manager','HR','Admin','CEO']}><RoleMatrix /></ProtectedRoute>} />
       <Route path="/admin/audit" element={<ProtectedRoute allowedRoles={['Admin','Manager','CEO']}><AuditLogs /></ProtectedRoute>} />
       <Route path="/directory" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
