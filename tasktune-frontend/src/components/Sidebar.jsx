@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Star, Building2, Bell, CheckSquare, ListTodo,
   FolderKanban, BarChart3, Brain, Shield, Users, FileText,
-  MessageSquare, ChevronLeft, ChevronRight, LogOut, Zap, Settings, CalendarDays, CreditCard
+  MessageSquare, ChevronLeft, ChevronRight, LogOut, Zap, Settings, CalendarDays, CreditCard, Clock3, Clock3
 } from 'lucide-react';
 
 const iconMap = {
