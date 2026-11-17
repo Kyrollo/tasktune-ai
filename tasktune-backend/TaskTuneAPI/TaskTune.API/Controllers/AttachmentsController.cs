@@ -10,6 +10,7 @@ namespace TaskTune.API.Controllers;
 
 [ApiController]
 [Route("api/tasks/{taskId:int}/attachments")]
+[RequireModule("tasks")]
 [Authorize]
 public class AttachmentsController : BaseApiController
 {
