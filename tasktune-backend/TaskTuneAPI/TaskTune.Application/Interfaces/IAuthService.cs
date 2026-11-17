@@ -6,5 +6,5 @@ public interface IAuthService
 {
     Task<TokenResponseDto?> LoginAsync(LoginRequestDto request);
     Task<TokenResponseDto?> RefreshTokenAsync(string refreshToken);
-    Task<bool> LogoutAsync(int userId);
+    Task<bool> LogoutAsync(int userId, Guid? sessionId);
 }
