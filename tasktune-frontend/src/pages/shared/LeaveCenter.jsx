@@ -37,7 +37,7 @@ export default function LeaveCenter() {
   const [requests, setRequests] = useState([]);
   const [inbox, setInbox] = useState([]);
   const [holidays, setHolidays] = useState([]);
-  const [calendarSettings, setCalendarSettings] = useState({ weekendDays: [0, 6] });
+  const [calendarSettings, setCalendarSettings] = useState({ weekendDays: [0, 6], timeZoneId: 'UTC' });
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,7 +91,10 @@ export default function LeaveCenter() {
       setBalances(results[1].data?.items || []);
       setRequests(results[2].data?.items || []);
       setHolidays(results[3].data?.items || []);
-      setCalendarSettings({ weekendDays: results[4].data?.weekendDays || [0, 6] });
+      setCalendarSettings({
+        weekendDays: results[4].data?.weekendDays || [0, 6],
+        timeZoneId: results[4].data?.timeZoneId || 'UTC',
+      });
       let cursor = 5;
       setInbox(canReview ? (results[cursor++].data?.items || []) : []);
       const directory = canManage ? results[cursor]?.data : null;
@@ -235,8 +238,8 @@ export default function LeaveCenter() {
     setSubmitting(true);
     setError('');
     try {
-      await leaveService.updateCalendarSettings(calendarSettings.weekendDays);
-      setSuccess('Company work week saved. New requests will use these weekend days.');
+      await leaveService.updateCalendarSettings(calendarSettings.weekendDays, calendarSettings.timeZoneId);
+      setSuccess('Company work week and time zone saved. New attendance dates use this time zone.');
       await load(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to save the company work calendar.');
@@ -528,7 +531,18 @@ export default function LeaveCenter() {
 
                 <form className="space-y-3" onSubmit={saveCalendarSettings}>
                   <h3 className="text-sm font-semibold text-text-primary">Work week</h3>
-                  <p className="text-xs text-text-muted">Select the non-working days used by leave calculations.</p>
+                  <p className="text-xs text-text-muted">Select the non-working days and local time zone used by attendance and leave operations.</p>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">Company time zone ID</label>
+                    <input
+                      value={calendarSettings.timeZoneId}
+                      onChange={(event) => setCalendarSettings((current) => ({ ...current, timeZoneId: event.target.value }))}
+                      maxLength={100}
+                      placeholder="Africa/Cairo"
+                      className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text-primary"
+                    />
+                    <p className="text-[11px] text-text-muted mt-1">Use a time zone ID available on the server, such as Africa/Cairo or UTC.</p>
+                  </div>
                   {[
                     { value: 0, label: 'Sunday' },
                     { value: 1, label: 'Monday' },
