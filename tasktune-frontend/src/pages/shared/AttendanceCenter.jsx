@@ -187,6 +187,29 @@ export default function AttendanceCenter() {
     }
   };
 
+
+  const runScheduleAction = async (action) => {
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = action === 'generate'
+        ? await attendanceService.generateSchedule(range.from, range.to)
+        : await attendanceService.reconcileMissed(range.from, range.to);
+      const data = result.data || {};
+      if (action === 'generate') {
+        setSuccess(`Schedule generated: ${data.generated || 0} records added; ${data.skippedExisting || 0} existing, ${data.skippedApprovedLeave || 0} leave days and ${data.skippedCompanyHoliday || 0} holidays skipped.`);
+      } else {
+        setSuccess(`Missed attendance reconciled: ${data.reconciledMissed || 0} records marked missed.`);
+      }
+      await load(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'The attendance schedule action could not be completed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const createShift = async (event) => {
     event.preventDefault();
     setSubmitting(true);
@@ -447,7 +470,22 @@ export default function AttendanceCenter() {
             <span className="text-xs text-text-muted">{showSetup ? 'Hide' : 'Show setup'}</span>
           </button>
           {showSetup && (
-            <div className="grid lg:grid-cols-2 gap-5 mt-5">
+            <>
+              <div className="mb-5 rounded-lg border border-border bg-bg p-4">
+                <h3 className="text-sm font-semibold text-text-primary mb-2">Schedule processing</h3>
+                <p className="text-xs text-text-muted mb-3">
+                  Use the selected timesheet date range ({range.from} to {range.to}). Approved leave and company holidays are skipped.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={() => runScheduleAction('generate')} disabled={submitting}>
+                    <span className="inline-flex items-center gap-2"><CalendarClock size={15} /> Generate scheduled records</span>
+                  </Button>
+                  <Button variant="secondary" onClick={() => runScheduleAction('reconcile')} disabled={submitting}>
+                    <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} /> Mark missed shifts</span>
+                  </Button>
+                </div>
+              </div>
+              <div className="grid lg:grid-cols-2 gap-5 mt-5">
               <form className="space-y-3" onSubmit={createShift}>
                 <h3 className="text-sm font-semibold text-text-primary">Create work shift</h3>
                 <input required maxLength={120} placeholder="Shift name (e.g. Morning)" value={shiftForm.name}
@@ -545,7 +583,8 @@ export default function AttendanceCenter() {
                 </Button>
                 <p className="text-xs text-text-muted">Overlapping assignments on the same weekday are rejected by the API.</p>
               </form>
-            </div>
+              </div>
+            </>
           )}
         </Card>
       )}
