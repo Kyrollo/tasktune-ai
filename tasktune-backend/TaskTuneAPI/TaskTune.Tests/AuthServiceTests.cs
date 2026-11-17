@@ -70,6 +70,7 @@ public sealed class AuthServiceTests
             PasswordHash = passwordHash,
             FirstName = "Test",
             LastName = "Employee",
+            FullName = "Test Employee",
             Role = 0,
             IsActive = true,
             CreatedAt = now,
