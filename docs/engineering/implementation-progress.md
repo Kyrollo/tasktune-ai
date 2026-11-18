@@ -338,3 +338,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Added provider-reported AI token usage ingestion with tenant-context validation, source validation and idempotent event writes. Replaying the same usage key and values is harmless; reusing the key with different values returns an idempotency conflict.
 - Token totals are returned as unavailable when no provider token-usage events exist. The current agent response contracts do not report token counts, so no token values are fabricated. Monthly token capacity is reported but not hard-enforced until provider instrumentation and reservation semantics are completed.
 - Added migration 20261118_008_usage_metering.sql and tests for seat/invitation counts, attachment bytes, idempotent token recording, monthly usage and missing tenant context.
+
+
+## P2 — tenant usage summary API
+
+- Exposed authenticated GET /api/tenant/usage for the current UTC month (or a validated requested year/month).
+- Tenant identity is taken from the server's tenant context, not from a query/body CompanyId. Invalid periods are rejected; missing tenant context is denied.
+- Added controller tests for tenant-context binding and invalid reporting periods, plus authorization metadata coverage.

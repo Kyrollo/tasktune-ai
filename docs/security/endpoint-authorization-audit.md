@@ -32,6 +32,12 @@ Logout and device-session listing/revocation require authentication. No controll
 | CommunicationsController.GetDeadLetterOutbox | `GET /api/communications/outbox/dead-letter` | CEO/Admin | Current tenant only; dead-letter rows only |
 | CommunicationsController.ReplayDeadLetter | `POST /api/communications/outbox/{id}/replay` | CEO/Admin | Current tenant; approved parent, DeadLetter state, explicit provider non-acceptance attestation and reason |
 
+## Tenant usage summary route
+
+| Controller action | Route | Required access | Data and tenant boundary |
+|---|---|---|---|
+| TenantUsageController.GetCurrentMonth | `GET /api/tenant/usage?year=&month=` | Authenticated session | Uses ITenantContext derived from validated JWT; does not accept CompanyId; reports current or selected UTC month |
+
 ## Tenant entitlement summary route
 
 | Controller action | Route | Required access | Data and tenant boundary |
