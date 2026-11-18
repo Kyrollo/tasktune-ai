@@ -37,11 +37,14 @@ public sealed class TenantLifecycleServiceTests
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
         await using var db = new TaskTuneDbContext(options, new FixedTenantContext(1));
-        db.Companies.Add(new Company { CompanyId = 1, CompanyName = "Lifecycle tenant", SettingsJson = "{}", Status = "Active", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        var company = new Company { CompanyId = 1, CompanyName = "Lifecycle tenant", SettingsJson = "{}", Status = "Active", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var actor = new User { UserId = 10, CompanyId = 1, Company = company, Email = "operator@tenant.test", PasswordHash = "test", FirstName = "Platform", LastName = "Operator", FullName = "Platform Operator", Role = 5, IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        db.Companies.Add(company);
+        db.Users.Add(actor);
         await db.SaveChangesAsync();
         var service = new TenantLifecycleService(db);
         Assert.Equal(TenantLifecycleChangeResult.InvalidReason, await service.SuspendAsync(1, 10, "short"));
-        Assert.Equal(TenantLifecycleChangeResult.ActorNotFound, await service.SuspendAsync(1, 10, "Reviewed and approved by platform operations."));
+        Assert.Equal(TenantLifecycleChangeResult.ActorNotFound, await service.SuspendAsync(1, 11, "Reviewed and approved by platform operations."));
         Assert.Equal(TenantLifecycleChangeResult.NotFound, await service.SuspendAsync(2, 10, "Reviewed and approved by platform operations."));
         Assert.Empty(await db.TenantLifecycleEvents.ToListAsync());
     }

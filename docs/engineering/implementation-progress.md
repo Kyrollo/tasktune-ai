@@ -276,3 +276,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Login and refresh reject suspended tenants for ordinary users; a denied refresh revokes the session family. Configured platform administrators retain a recovery path.
 - Tenant membership middleware returns HTTP 403 for authenticated regular members of suspended tenants but still validates the member and session before allowing the platform-admin exception.
 - Added a PlatformAdmin authorization policy and regression tests for suspended-tenant login/refresh and middleware behavior. The platform console endpoints/UI follow in the next P2 change.
+
+
+## P2 — platform tenant console API foundation
+
+- Added PlatformTenantsController, protected at controller level by [Authorize(Policy = "PlatformAdmin")].
+- GET endpoints expose a paged tenant inventory and tenant detail with active/total user counts and the latest 100 lifecycle events. Results intentionally omit SettingsJson and other tenant configuration secrets.
+- Suspend/reactivate routes require a reason and use TenantLifecycleService. The controller never accepts a target CompanyId from the body and records actor, reason and state transition in TenantLifecycleEvents.
+- Added tests for cross-tenant inventory access through the platform service, tenant suspension audit, invalid reason and missing tenant responses, plus metadata enforcement of the PlatformAdmin policy.
+- This is an API foundation; platform admin dashboard UI, subscription plans/entitlements and usage metering remain outstanding.

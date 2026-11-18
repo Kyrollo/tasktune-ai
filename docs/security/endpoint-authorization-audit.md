@@ -32,6 +32,15 @@ Logout and device-session listing/revocation require authentication. No controll
 | CommunicationsController.GetDeadLetterOutbox | `GET /api/communications/outbox/dead-letter` | CEO/Admin | Current tenant only; dead-letter rows only |
 | CommunicationsController.ReplayDeadLetter | `POST /api/communications/outbox/{id}/replay` | CEO/Admin | Current tenant; approved parent, DeadLetter state, explicit provider non-acceptance attestation and reason |
 
+## Platform tenant lifecycle routes
+
+| Controller action | Route | Required access | Resource / audit boundary |
+|---|---|---|---|
+| PlatformTenantsController.GetTenants | `GET /api/platform/tenants` | PlatformAdmin claim | Cross-tenant inventory; returns only identifiers, names, status and user counts |
+| PlatformTenantsController.GetTenant | `GET /api/platform/tenants/{id}` | PlatformAdmin claim | One tenant summary plus last 100 lifecycle events |
+| PlatformTenantsController.SuspendTenant | `POST /api/platform/tenants/{id}/suspend` | PlatformAdmin claim | Active → Suspended; reason required; immutable lifecycle event |
+| PlatformTenantsController.ReactivateTenant | `POST /api/platform/tenants/{id}/reactivate` | PlatformAdmin claim | Suspended → Active; reason required; immutable lifecycle event |
+
 ## Controller policy layers
 
 - Every routed action must have effective `[Authorize]` metadata on its controller or method, unless it is on the explicit anonymous allowlist above. `ControllerAuthorizationMetadataTests` enforces this against the compiled API assembly.

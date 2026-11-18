@@ -115,3 +115,8 @@ Existing companies migrate to Status = Active; supported lifecycle values are Ac
 ## 12. Platform administrator identity
 
 Configure the initial platform administrator user IDs only through trusted deployment configuration at PlatformAdmin:UserIdsCsv (environment variable PlatformAdmin__UserIdsCsv). The value is intentionally empty by default. A user ID in this list receives a platform_admin JWT claim at login/refresh; the PlatformAdmin authorization policy requires that claim. Do not expose a tenant-editable setting for this allowlist.
+
+
+## 13. Platform tenant console API
+
+The platform tenant inventory and lifecycle endpoints require the PlatformAdmin policy, which in turn requires a platform_admin=true claim minted only for IDs in trusted deployment configuration. The tenant inventory returns limited operational fields and does not return SettingsJson. Suspend/reactivate operations must include a 10–1,000 character reason and generate an immutable TenantLifecycleEvents record. Review access logs and lifecycle audit events regularly.

@@ -83,6 +83,7 @@ builder.Services.AddScoped<AccountSecurityWorkflowService>();
 builder.Services.AddScoped<CommunicationApprovalService>();
 builder.Services.AddScoped<CommunicationOutboxOperationsService>();
 builder.Services.AddScoped<CommunicationOutboxMetricsService>();
+builder.Services.AddScoped<TenantLifecycleService>();
 builder.Services.AddHostedService<CommunicationOutboxWorker>();
 
 builder.Services.AddRateLimiter(options =>

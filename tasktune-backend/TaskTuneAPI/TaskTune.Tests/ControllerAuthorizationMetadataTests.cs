@@ -122,6 +122,16 @@ public sealed class ControllerAuthorizationMetadataTests
     }
 
     [Fact]
+    public void PlatformTenantControllerRequiresThePlatformAdminPolicy()
+    {
+        var controller = typeof(PlatformTenantsController);
+        var authorization = controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).SingleOrDefault();
+        Assert.NotNull(authorization);
+        Assert.Equal("PlatformAdmin", authorization!.Policy);
+        Assert.Null(controller.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true));
+    }
+
+    [Fact]
     public void NotificationsControllerRequiresAuthenticationAndHasNoAnonymousOverrides()
     {
         var controller = typeof(NotificationsController);
