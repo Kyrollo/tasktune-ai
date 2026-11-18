@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Application.Interfaces;
+using TaskTune.API.Support;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Controllers;

@@ -362,3 +362,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Attachment uploads now stage in private storage, calculate the actual staged byte size, acquire the subscription lock, and only move the file to its final private key while the attachment metadata insert is inside the same transaction. On failure the staged/final file is cleaned up.
 - Requests that exceed the tenant storage allowance return HTTP 409; missing/inactive subscription returns HTTP 403. NULL MaxStorageBytes means unlimited storage.
 - Added service tests for within-limit uploads, storage-limit exhaustion, missing tenant context and missing active subscription.
+
+
+## CI correction — storage quota service namespace
+
+- Added the missing TaskTune.API.Support import to AttachmentsController so the new TenantStorageCapacityService dependency resolves at compile time. No behavior changed.
