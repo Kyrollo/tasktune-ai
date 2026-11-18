@@ -206,3 +206,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## Replay confirmation test correction
 
 - The first replay-confirmation CI run found one repeated-replay test call that had not supplied the new provider non-acceptance attestation argument. Updated that call to test the intended second-replay conflict rather than the missing-confirmation guard.
+
+
+## Completed — tenant delivery quota and queue visibility foundation
+
+- Added configurable per-approval recipient cap (Email:Outbox:MaxRecipientsPerApproval, default 250; maximum 1,000) and per-tenant active backlog cap (Email:Outbox:MaxPendingPerTenant, default 1,000).
+- Approval quota checks count Pending and Processing rows for the same tenant and return HTTP 429 without approving or inserting outbox rows when a limit is exceeded.
+- Relational approval transitions use a SQL Server SERIALIZABLE transaction around the backlog check and approval/outbox write to protect the quota from ordinary concurrent approvals. In-memory regression tests verify limits and no-partial-write behavior; SQL Server execution remains a CI integration gate.
+- Added a CEO/Admin tenant-scoped queue metrics endpoint reporting Pending, Processing, Sent, Failed, DeadLetter, oldest pending/processing age, worker state and queue-age warning threshold.
+- Added safe appsettings defaults. Email:Outbox:Enabled remains false.

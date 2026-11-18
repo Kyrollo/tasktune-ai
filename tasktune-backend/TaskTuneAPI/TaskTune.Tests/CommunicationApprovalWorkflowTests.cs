@@ -42,6 +42,43 @@ public sealed class CommunicationApprovalWorkflowTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task Approval_EnforcesRecipientAndTenantBacklogQuotas()
+    {
+        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new TaskTuneDbContext(options, new FixedTenantContext(1));
+        var company = new Company { CompanyId = 1, CompanyName = "Quota Tenant", SettingsJson = "{}", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var requester = CreateUser(40, 1, "quota-requester@tenant.test");
+        var reviewer = CreateUser(41, 1, "quota-reviewer@tenant.test");
+        db.Companies.Add(company);
+        db.Users.AddRange(requester, reviewer);
+        var tooManyRecipients = CreateApproval(40, requester, ["a@tenant.test", "b@tenant.test", "c@tenant.test"]);
+        var queueFull = CreateApproval(41, requester, ["new@tenant.test"]);
+        var existingApproval = CreateApproval(42, requester, ["existing@tenant.test"]);
+        existingApproval.Status = "Approved";
+        db.CommunicationApprovals.AddRange(tooManyRecipients, queueFull, existingApproval);
+        await db.SaveChangesAsync();
+        db.CommunicationOutbox.AddRange(
+            new CommunicationOutbox { CompanyId = 1, ApprovalId = existingApproval.ApprovalId, RecipientEmail = "pending1@tenant.test", Subject = "Existing", Body = "Test", Status = "Pending", Attempts = 0, NextAttemptAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, IdempotencyKey = new string('E', 64) },
+            new CommunicationOutbox { CompanyId = 1, ApprovalId = existingApproval.ApprovalId, RecipientEmail = "pending2@tenant.test", Subject = "Existing", Body = "Test", Status = "Processing", Attempts = 1, NextAttemptAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, IdempotencyKey = new string('F', 64) });
+        await db.SaveChangesAsync();
+
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:Outbox:MaxRecipientsPerApproval"] = "2",
+                ["Email:Outbox:MaxPendingPerTenant"] = "2"
+            }).Build();
+        var service = new CommunicationApprovalService(db, config);
+
+        Assert.Equal(CommunicationApprovalResult.RecipientQuotaExceeded, await service.ApproveAsync(tooManyRecipients.ApprovalId, 1, reviewer.UserId));
+        Assert.Equal(CommunicationApprovalResult.TenantQueueQuotaExceeded, await service.ApproveAsync(queueFull.ApprovalId, 1, reviewer.UserId));
+        Assert.Equal("Pending", (await db.CommunicationApprovals.SingleAsync(x => x.ApprovalId == tooManyRecipients.ApprovalId)).Status);
+        Assert.Equal("Pending", (await db.CommunicationApprovals.SingleAsync(x => x.ApprovalId == queueFull.ApprovalId)).Status);
+        Assert.Equal(2, await db.CommunicationOutbox.CountAsync());
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task Approval_IsCompanyScoped()
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;

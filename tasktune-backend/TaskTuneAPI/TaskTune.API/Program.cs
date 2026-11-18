@@ -82,6 +82,7 @@ builder.Services.AddScoped<ITransactionalEmailSender, SmtpTransactionalEmailSend
 builder.Services.AddScoped<AccountSecurityWorkflowService>();
 builder.Services.AddScoped<CommunicationApprovalService>();
 builder.Services.AddScoped<CommunicationOutboxOperationsService>();
+builder.Services.AddScoped<CommunicationOutboxMetricsService>();
 builder.Services.AddHostedService<CommunicationOutboxWorker>();
 
 builder.Services.AddRateLimiter(options =>

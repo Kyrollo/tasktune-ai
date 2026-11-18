@@ -18,17 +18,20 @@ public class CommunicationsController : BaseApiController
     private readonly IConfiguration _configuration;
     private readonly CommunicationApprovalService _approvalService;
     private readonly CommunicationOutboxOperationsService _outboxOperations;
+    private readonly CommunicationOutboxMetricsService _outboxMetrics;
 
     public CommunicationsController(
         TaskTuneDbContext db,
         IConfiguration configuration,
         CommunicationApprovalService approvalService,
-        CommunicationOutboxOperationsService outboxOperations)
+        CommunicationOutboxOperationsService outboxOperations,
+        CommunicationOutboxMetricsService outboxMetrics)
     {
         _db = db;
         _configuration = configuration;
         _approvalService = approvalService;
         _outboxOperations = outboxOperations;
+        _outboxMetrics = outboxMetrics;
     }
 
     [HttpGet]
@@ -484,6 +487,10 @@ public class CommunicationsController : BaseApiController
             return Conflict(new { message = "The requester cannot approve their own communication." });
         if (result == CommunicationApprovalResult.AlreadyReviewed)
             return Conflict(new { message = "This communication has already been reviewed." });
+        if (result == CommunicationApprovalResult.RecipientQuotaExceeded)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { message = "This communication exceeds the configured per-request recipient quota." });
+        if (result == CommunicationApprovalResult.TenantQueueQuotaExceeded)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { message = "The company pending delivery quota is full. Wait for queued messages to be processed before approving more." });
         if (result != CommunicationApprovalResult.Success)
             return Conflict(new { message = "The approval could not be completed. Refresh the queue and try again." });
 
@@ -521,6 +528,18 @@ public class CommunicationsController : BaseApiController
             "communication.rejected", "CommunicationApproval", approvalId,
             after: new { status = "Rejected", reason });
         return Ok(new { approvalId, status = "Rejected", message = "Communication rejected. No email was sent." });
+    }
+
+    [HttpGet("outbox/metrics")]
+    [Authorize(Roles = "CEO,Admin")]
+    public async Task<IActionResult> GetOutboxMetrics(CancellationToken cancellationToken)
+    {
+        var companyId = GetCurrentCompanyId();
+        if (companyId == null) return Unauthorized();
+        var workerEnabled = _configuration.GetValue<bool>("Email:Outbox:Enabled");
+        var warningMinutes = Math.Clamp(_configuration.GetValue<int?>("Email:Outbox:QueueAgeWarningMinutes") ?? 15, 1, 1440);
+        var metrics = await _outboxMetrics.GetAsync(companyId.Value, warningMinutes, workerEnabled, cancellationToken);
+        return Ok(metrics);
     }
 
     [HttpGet("outbox/dead-letter")]

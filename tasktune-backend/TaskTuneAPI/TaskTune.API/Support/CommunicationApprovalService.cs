@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Support;
@@ -12,14 +14,22 @@ public enum CommunicationApprovalResult
     NotFound,
     CannotReviewOwnRequest,
     AlreadyReviewed,
-    InvalidRecipients
+    InvalidRecipients,
+    RecipientQuotaExceeded,
+    TenantQueueQuotaExceeded
 }
 
-public sealed class CommunicationApprovalService(TaskTuneDbContext db)
+public sealed class CommunicationApprovalService(TaskTuneDbContext db, IConfiguration? configuration = null)
 {
     public async System.Threading.Tasks.Task<CommunicationApprovalResult> ApproveAsync(
         int approvalId, int companyId, int reviewerId, CancellationToken cancellationToken = default)
     {
+        var maxRecipients = Math.Clamp(configuration?.GetValue<int?>("Email:Outbox:MaxRecipientsPerApproval") ?? 250, 1, 1000);
+        var maxPendingPerTenant = Math.Clamp(configuration?.GetValue<int?>("Email:Outbox:MaxPendingPerTenant") ?? 1000, 1, 100000);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
         var approval = await db.CommunicationApprovals
             .SingleOrDefaultAsync(a => a.ApprovalId == approvalId && a.CompanyId == companyId, cancellationToken);
         if (approval == null) return CommunicationApprovalResult.NotFound;
@@ -40,8 +50,18 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db)
 
         recipients = recipients.Where(email => !string.IsNullOrWhiteSpace(email))
             .Select(email => email.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (recipients.Count == 0 || recipients.Count > 1000)
+        if (recipients.Count == 0)
             return CommunicationApprovalResult.InvalidRecipients;
+        if (recipients.Count > maxRecipients)
+            return CommunicationApprovalResult.RecipientQuotaExceeded;
+
+        // The SERIALIZABLE transaction protects this tenant backlog check from concurrent approvals.
+        var activeBacklog = await db.CommunicationOutbox
+            .Where(item => item.CompanyId == companyId &&
+                (item.Status == "Pending" || item.Status == "Processing"))
+            .LongCountAsync(cancellationToken);
+        if (activeBacklog + recipients.Count > maxPendingPerTenant)
+            return CommunicationApprovalResult.TenantQueueQuotaExceeded;
 
         var now = DateTime.UtcNow;
         var outboxRows = recipients.Select(email => new CommunicationOutbox
@@ -69,16 +89,22 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db)
             // A single SaveChanges is transactional on relational providers, so the
             // approval transition and every recipient outbox row succeed together.
             await db.SaveChangesAsync(cancellationToken);
+            if (transaction != null)
+                await transaction.CommitAsync(cancellationToken);
             return CommunicationApprovalResult.Success;
         }
         catch (DbUpdateConcurrencyException)
         {
+            if (transaction != null)
+                await transaction.RollbackAsync(cancellationToken);
             return CommunicationApprovalResult.AlreadyReviewed;
         }
         catch (DbUpdateException)
         {
             // A simultaneous reviewer can win the approval transition. SQL Server
             // rolls back the approval + recipient outbox transaction on unique/FK errors.
+            if (transaction != null)
+                await transaction.RollbackAsync(cancellationToken);
             db.ChangeTracker.Clear();
             var latestStatus = await db.CommunicationApprovals.AsNoTracking()
                 .Where(a => a.ApprovalId == approvalId && a.CompanyId == companyId)
