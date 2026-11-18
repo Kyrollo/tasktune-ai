@@ -377,3 +377,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — normalize qualified storage file references
 
 - Corrected the duplicate System.IO namespace prefix introduced when qualifying the MVC controller's filesystem calls.
+
+
+## P2 — platform usage console integration
+
+- Connected the Platform Console tenant detail view to GET /api/platform/tenants/{companyId}/usage.
+- The console now displays seats reserved (active users + pending invitations), attachment storage and plan limit, AI action count, and provider-reported token usage/limit for the current UTC calendar month.
+- Cross-tenant reads remain available only under the PlatformAdmin policy. Standard tenant usage remains bound to the authenticated ITenantContext.
+- The UI explicitly distinguishes missing provider token reports from zero tokens.

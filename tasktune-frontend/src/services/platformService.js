@@ -3,6 +3,7 @@ import api from './api';
 export const platformService = {
   getTenants: (params = {}) => api.get('/platform/tenants', { params }),
   getTenant: (companyId) => api.get(`/platform/tenants/${companyId}`),
+  getTenantUsage: (companyId, params = {}) => api.get(`/platform/tenants/${companyId}/usage`, { params }),
   suspendTenant: (companyId, reason) => api.post(`/platform/tenants/${companyId}/suspend`, { reason }),
   reactivateTenant: (companyId, reason) => api.post(`/platform/tenants/${companyId}/reactivate`, { reason }),
   getPlans: () => api.get('/platform/plans'),

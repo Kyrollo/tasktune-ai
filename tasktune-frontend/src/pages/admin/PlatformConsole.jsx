@@ -5,6 +5,15 @@ import { platformService } from '../../services/platformService';
 import { Search, RefreshCw, Building2, CreditCard, ShieldCheck } from 'lucide-react';
 
 const today = () => new Date().toISOString().slice(0, 10);
+const formatBytes = (value) => {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return bytes + ' B';
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return size.toFixed(1) + ' ' + units[unit];
+};
 const dateToUtc = (value) => value ? new Date(`${value}T00:00:00.000Z`).toISOString() : null;
 
 export default function PlatformConsole() {
@@ -13,6 +22,7 @@ export default function PlatformConsole() {
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [tenantDetails, setTenantDetails] = useState(null);
   const [subscriptionDetails, setSubscriptionDetails] = useState(null);
+  const [usageSummary, setUsageSummary] = useState(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -47,16 +57,19 @@ export default function PlatformConsole() {
     if (!companyId) {
       setTenantDetails(null);
       setSubscriptionDetails(null);
+      setUsageSummary(null);
       return;
     }
     setDetailsLoading(true);
     try {
-      const [tenantResult, subscriptionResult] = await Promise.all([
+      const [tenantResult, subscriptionResult, usageResult] = await Promise.all([
         platformService.getTenant(companyId),
         platformService.getSubscription(companyId),
+        platformService.getTenantUsage(companyId),
       ]);
       setTenantDetails(tenantResult.data);
       setSubscriptionDetails(subscriptionResult.data);
+      setUsageSummary(usageResult.data);
       const current = subscriptionResult.data?.subscription;
       setAssignment({
         planId: current?.planId ? String(current.planId) : '',
@@ -234,6 +247,41 @@ export default function PlatformConsole() {
           </Card>
         </div>
       </div>
+
+          <Card>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-text-primary">Current-month usage</h2>
+              <Badge>{usageSummary?.hasActiveSubscription ? usageSummary.planCode : 'No active plan'}</Badge>
+            </div>
+            {!usageSummary ? <p className="text-sm text-text-muted">Usage is not available.</p> : <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <div className="rounded-lg bg-bg p-3">
+                  <p className="text-xs text-text-muted">Reserved seats</p>
+                  <p className="mt-1 text-lg font-semibold text-text-primary">{usageSummary.seatsReserved}{usageSummary.maxUsers == null ? ' / ∞' : ' / ' + usageSummary.maxUsers}</p>
+                  <p className="text-xs text-text-muted">{usageSummary.activeUsers} active · {usageSummary.pendingInvitations} invited</p>
+                </div>
+                <div className="rounded-lg bg-bg p-3">
+                  <p className="text-xs text-text-muted">Attachment storage</p>
+                  <p className="mt-1 text-lg font-semibold text-text-primary">{formatBytes(usageSummary.taskAttachmentStorageBytes)}{usageSummary.maxStorageBytes == null ? ' / ∞' : ' / ' + formatBytes(usageSummary.maxStorageBytes)}</p>
+                </div>
+                <div className="rounded-lg bg-bg p-3">
+                  <p className="text-xs text-text-muted">AI actions</p>
+                  <p className="mt-1 text-lg font-semibold text-text-primary">{usageSummary.aiActions}</p>
+                </div>
+                <div className="rounded-lg bg-bg p-3">
+                  <p className="text-xs text-text-muted">AI tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-text-primary">{usageSummary.aiTokenUsageAvailable ? Number(usageSummary.aiTokensUsed).toLocaleString() : 'Not reported'}</p>
+                  <p className="text-xs text-text-muted">{usageSummary.monthlyAiTokenLimit == null ? 'No configured cap' : 'Limit ' + Number(usageSummary.monthlyAiTokenLimit).toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg bg-bg p-3">
+                  <p className="text-xs text-text-muted">Period (UTC)</p>
+                  <p className="mt-1 text-lg font-semibold text-text-primary">{String(usageSummary.month).padStart(2, '0')}/{usageSummary.year}</p>
+                </div>
+              </div>
+              {(usageSummary.seatLimitExceeded || usageSummary.storageLimitExceeded || usageSummary.aiTokenLimitExceeded) && <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">One or more measured usage values exceed the assigned plan limit.</p>}
+              <p className="mt-3 text-xs text-text-muted">AI tokens are shown only when a provider reports actual token counts. “Not reported” is not zero.</p>
+            </>}
+          </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card>

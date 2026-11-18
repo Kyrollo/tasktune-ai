@@ -101,3 +101,10 @@ The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especia
 
 - AttachmentsController.UploadAttachment: authenticated user with task access; current JWT tenant must match the task's tenant; storage capacity is checked against the current tenant subscription while holding a SERIALIZABLE transaction and subscription-row lock.
 - The upload is staged privately, checked using actual bytes, and only moved to its final private key with attachment metadata inserted inside the transaction. Plan-cap failure returns Conflict without creating an attachment record.
+
+
+## Platform usage reporting
+
+| Controller action | Route | Required access | Data and boundary |
+|---|---|---|---|
+| PlatformTenantsController.GetTenantUsage | `GET /api/platform/tenants/{companyId}/usage?year=&month=` | PlatformAdmin claim | Aggregates active users, invitations, task attachments, AI actions and recorded provider token events using explicit company predicates. |
