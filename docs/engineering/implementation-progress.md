@@ -385,3 +385,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - The console now displays seats reserved (active users + pending invitations), attachment storage and plan limit, AI action count, and provider-reported token usage/limit for the current UTC calendar month.
 - Cross-tenant reads remain available only under the PlatformAdmin policy. Standard tenant usage remains bound to the authenticated ITenantContext.
 - The UI explicitly distinguishes missing provider token reports from zero tokens.
+
+
+## CI correction — platform tenant controller test fixture
+
+- Updated the existing PlatformTenantsController unit-test fixture to provide the new TenantUsageMeterService dependency introduced by the platform-only tenant usage action.

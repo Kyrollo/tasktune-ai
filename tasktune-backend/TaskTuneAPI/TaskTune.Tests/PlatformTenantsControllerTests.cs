@@ -71,7 +71,7 @@ public sealed class PlatformTenantsControllerTests
             new Claim("platform_admin", "true"),
             new Claim("role", "Admin")
         ], "UnitTest");
-        return new PlatformTenantsController(db, new TenantLifecycleService(db))
+        return new PlatformTenantsController(db, new TenantLifecycleService(db), new TenantUsageMeterService(db))
         {
             ControllerContext = new ControllerContext
             {
