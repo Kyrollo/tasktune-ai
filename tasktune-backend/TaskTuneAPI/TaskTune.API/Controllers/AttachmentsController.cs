@@ -73,7 +73,7 @@ public class AttachmentsController : BaseApiController
         var fullPath = Path.GetFullPath(Path.Combine(storageRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         var rootPrefix = Path.GetFullPath(storageRoot) + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        if (!fullPath.StartsWith(rootPrefix, comparison) || !System.IO.File.Exists(fullPath))
+        if (!fullPath.StartsWith(rootPrefix, comparison) || !System.IO.System.IO.File.Exists(fullPath))
             return NotFound();
 
         Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -142,7 +142,7 @@ public class AttachmentsController : BaseApiController
                 });
             }
 
-            File.Move(temporaryPath, fullPath);
+            System.IO.File.Move(temporaryPath, fullPath);
             committedFilePath = fullPath;
             var attachment = new TaskAttachment
             {
@@ -171,14 +171,14 @@ public class AttachmentsController : BaseApiController
         }
         catch
         {
-            if (System.IO.File.Exists(temporaryPath)) System.IO.File.Delete(temporaryPath);
-            if (committedFilePath != null && System.IO.File.Exists(committedFilePath))
-                System.IO.File.Delete(committedFilePath);
+            if (System.IO.System.IO.File.Exists(temporaryPath)) System.IO.System.IO.File.Delete(temporaryPath);
+            if (committedFilePath != null && System.IO.System.IO.File.Exists(committedFilePath))
+                System.IO.System.IO.File.Delete(committedFilePath);
             throw;
         }
         finally
         {
-            if (System.IO.File.Exists(temporaryPath)) System.IO.File.Delete(temporaryPath);
+            if (System.IO.System.IO.File.Exists(temporaryPath)) System.IO.System.IO.File.Delete(temporaryPath);
         }
     }
 

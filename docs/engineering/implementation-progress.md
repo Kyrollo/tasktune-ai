@@ -367,3 +367,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — storage quota service namespace
 
 - Added the missing TaskTune.API.Support import to AttachmentsController so the new TenantStorageCapacityService dependency resolves at compile time. No behavior changed.
+
+
+## CI correction — qualify filesystem operations in MVC controller
+
+- Fully qualified System.IO.File.Move/Exists/Delete in AttachmentsController. The inherited ControllerBase.File method shadows the System.IO.File type name in controller scope.
