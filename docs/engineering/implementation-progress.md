@@ -255,3 +255,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Added negative tests proving a user cannot mark-read or delete another user's notification; foreign-user IDs return Not Found and leave the other record unchanged.
 - Added metadata checks pinning CEO/Admin authorization to queue metrics, dead-letter listing and replay routes. NotificationsController remains authenticated and has no anonymous action overrides.
 - Expanded the reviewed route-to-resource authorization matrix. The wider raw-SQL, export, cache, storage, webhook and agent-tool audit remains open.
+
+
+## SQL Server notification fixture correction
+
+- The SQL Server bulk mark-read test now relies on database-generated identity IDs for the company and both users. It binds the simulated JWT and tenant context to those generated values, avoiding identity-insert assumptions in the relational integration test.

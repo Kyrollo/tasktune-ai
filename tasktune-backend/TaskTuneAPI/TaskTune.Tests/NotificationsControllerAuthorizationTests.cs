@@ -65,16 +65,24 @@ public sealed class NotificationsControllerAuthorizationTests
         {
             int ownId;
             int otherId;
+            int tenantId;
+            int currentUserId;
             await using (var seed = new TaskTuneDbContext(options, new FixedTenantContext(null)))
             {
                 await seed.Database.EnsureCreatedAsync();
-                var company = CreateCompany(1);
-                var user = CreateUser(10, company, "first@tenant.test");
-                var otherUser = CreateUser(11, company, "second@tenant.test");
+                var company = new Company
+                {
+                    CompanyName = "SQL Notification Tenant", SettingsJson = "{}",
+                    CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                };
+                var user = CreateSqlUser(company, "first@tenant.test");
+                var otherUser = CreateSqlUser(company, "second@tenant.test");
                 seed.Companies.Add(company);
                 seed.Users.AddRange(user, otherUser);
                 await seed.SaveChangesAsync();
 
+                tenantId = company.CompanyId;
+                currentUserId = user.UserId;
                 var now = DateTime.UtcNow;
                 var own = CreateNotification(user, "Own notification", now);
                 var other = CreateNotification(otherUser, "Other notification", now);
@@ -84,8 +92,8 @@ public sealed class NotificationsControllerAuthorizationTests
                 otherId = other.NotificationId;
             }
 
-            await using var db = new TaskTuneDbContext(options, new FixedTenantContext(1));
-            var controller = CreateController(db, 10);
+            await using var db = new TaskTuneDbContext(options, new FixedTenantContext(tenantId));
+            var controller = CreateController(db, currentUserId, tenantId);
             Assert.IsType<OkObjectResult>(await controller.MarkAllRead());
 
             var rows = await db.Notifications.IgnoreQueryFilters().ToListAsync();
@@ -101,12 +109,12 @@ public sealed class NotificationsControllerAuthorizationTests
         }
     }
 
-    private static NotificationsController CreateController(TaskTuneDbContext db, int userId)
+    private static NotificationsController CreateController(TaskTuneDbContext db, int userId, int companyId = 1)
     {
         var identity = new ClaimsIdentity(
         [
             new Claim("sub", userId.ToString()),
-            new Claim("companyId", "1"),
+            new Claim("companyId", companyId.ToString()),
             new Claim("role", "Employee")
         ], authenticationType: "UnitTest");
         var controller = new NotificationsController(db)
@@ -151,6 +159,20 @@ public sealed class NotificationsControllerAuthorizationTests
         Email = email, PasswordHash = "test-hash",
         FirstName = "Test", LastName = "User", FullName = "Test User",
         Role = 0, IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+    };
+
+    private static User CreateSqlUser(Company company, string email) => new()
+    {
+        Company = company,
+        Email = email,
+        PasswordHash = "sql-integration-test-hash",
+        FirstName = "Test",
+        LastName = "User",
+        FullName = "Test User",
+        Role = 0,
+        IsActive = true,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
     };
 
     private static Notification CreateNotification(User user, string title, DateTime now) => new()
