@@ -444,8 +444,8 @@ public class TasksController : BaseApiController
                 var err = await response.Content.ReadAsStringAsync();
                 return StatusCode(502, new { message = "AI progress agent returned an error." });
             }
-            var result = await response.Content.ReadFromJsonAsync<object>();
-            if (userId != null && result != null)
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+            if (userId != null && result.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null)
             {
                 _db.AIActionsLogs.Add(new AIActionsLog
                 {
@@ -468,6 +468,7 @@ public class TasksController : BaseApiController
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
                 });
+                AddReportedAiTokenUsage(result, "progress_tracking");
                 await _db.SaveChangesAsync();
                 await AuditLogWriter.WriteAsync(
                     _db,

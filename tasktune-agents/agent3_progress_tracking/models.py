@@ -69,3 +69,4 @@ class ProgressTrackingResponse(BaseModel):
         ...,
         description="One of: low, medium, high",
     )
+    token_usage: dict[str, int] | None = None

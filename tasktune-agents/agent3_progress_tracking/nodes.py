@@ -22,6 +22,7 @@ from .prompts import (
     RISK_ASSESSMENT_PROMPT,
 )
 from .state import ProgressTrackingState
+from usage_metadata import extract_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ def analyze_progress(state: ProgressTrackingState) -> dict:
         variables = _input_vars(state)
         chain = ANALYZE_PROGRESS_PROMPT | llm
         response = chain.invoke(variables)
+        token_usage = extract_token_usage(response) or {}
 
         result = _parse_json_response(response.content)
         summary = result.get("progress_summary", "At risk")
@@ -110,6 +112,7 @@ def analyze_progress(state: ProgressTrackingState) -> dict:
             summary = "At risk"
 
         return {
+            "token_usage": token_usage,
             "progress_summary": summary,
             "messages": [f"[analyze_progress] Summary: {summary} — {reason}"],
         }
@@ -133,6 +136,7 @@ def predict_completion(state: ProgressTrackingState) -> dict:
         }
         chain = PREDICT_COMPLETION_PROMPT | llm
         response = chain.invoke(variables)
+        token_usage = extract_token_usage(response) or {}
 
         result = _parse_json_response(response.content)
         prediction = result.get("completion_prediction")
@@ -143,6 +147,7 @@ def predict_completion(state: ProgressTrackingState) -> dict:
             prediction = None
 
         return {
+            "token_usage": token_usage,
             "completion_prediction": prediction,
             "messages": [f"[predict_completion] Prediction: {prediction} — {reasoning}"],
         }
@@ -167,6 +172,7 @@ def assess_risk(state: ProgressTrackingState) -> dict:
         }
         chain = RISK_ASSESSMENT_PROMPT | llm
         response = chain.invoke(variables)
+        token_usage = extract_token_usage(response) or {}
 
         result = _parse_json_response(response.content)
         risk_level = result.get("risk_level", "medium").lower()
@@ -177,6 +183,7 @@ def assess_risk(state: ProgressTrackingState) -> dict:
             risk_level = "medium"
 
         return {
+            "token_usage": token_usage,
             "risk_level": risk_level,
             "blockers_analysis": blockers_analysis,
             "messages": [
@@ -207,6 +214,7 @@ def generate_recommendations(state: ProgressTrackingState) -> dict:
         }
         chain = RECOMMENDATIONS_PROMPT | llm
         response = chain.invoke(variables)
+        token_usage = extract_token_usage(response) or {}
 
         result = _parse_json_response(response.content)
         recommendations = result.get("recommendations", [])
@@ -219,6 +227,7 @@ def generate_recommendations(state: ProgressTrackingState) -> dict:
             recommendations = ["Review current blockers and escalate if needed."]
 
         return {
+            "token_usage": token_usage,
             "recommendations": recommendations,
             "messages": [
                 f"[generate_recommendations] {len(recommendations)} recommendation(s) generated"
@@ -260,6 +269,7 @@ def compile_output(state: ProgressTrackingState) -> dict:
         "blockers_analysis": state.get("blockers_analysis", "No analysis available."),
         "recommendations": state.get("recommendations", ["Review current blockers and escalate if needed."]),
         "risk_level": risk,
+        "token_usage": state.get("token_usage") or None,
     }
 
     return {

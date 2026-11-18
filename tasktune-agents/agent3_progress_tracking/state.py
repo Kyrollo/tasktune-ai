@@ -7,6 +7,8 @@ from typing import Annotated, Any, Optional
 
 from typing_extensions import TypedDict
 
+from usage_metadata import merge_token_usage
+
 
 class ProgressTrackingInput(TypedDict, total=False):
     """Raw progress data coming from the caller / API."""
@@ -41,4 +43,5 @@ class ProgressTrackingState(TypedDict, total=False):
     recommendations: list[str]           # 2-4 actionable suggestions
     risk_level: str                      # "low" | "medium" | "high"
     final_output: dict[str, Any]
+    token_usage: Annotated[dict[str, int], merge_token_usage]
     messages: Annotated[list[str], operator.add]

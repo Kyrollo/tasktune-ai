@@ -409,3 +409,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — task response JsonElement guard
 
 - Updated the task-recommendation response guard to test JsonElement.ValueKind for Undefined/Null instead of comparing the value type with null.
+
+
+## P2 — progress tracking AI token metering
+
+- Agent 3 progress tracking preserves raw LangChain provider usage and aggregates counts across analysis, completion prediction, risk assessment and recommendations.
+- The progress-tracking response includes an optional token_usage object only when provider usage is available.
+- TasksController.AnalyzeProgress records a positive provider-reported total in TenantUsageEvents in the same EF save as its AIActionsLog entry.
+- Fallback/error responses without usage metadata do not create token events.
