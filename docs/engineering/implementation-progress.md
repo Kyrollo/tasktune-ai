@@ -404,3 +404,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Added a tenant-scoped AddAiTokenUsageEvent method that stages provider-reported totals in the same DbContext unit of work as AI action/chat records.
 - Chatbot and both task-guidance endpoints persist a usage event only when a positive provider-reported total_tokens is present. No counts are estimated from prompt length or configured max-token values.
 - The monthly AI limit remains report-only until a reservation/settlement design is implemented and concurrency-tested.
+
+
+## CI correction — task response JsonElement guard
+
+- Updated the task-recommendation response guard to test JsonElement.ValueKind for Undefined/Null instead of comparing the value type with null.

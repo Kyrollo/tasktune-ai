@@ -333,7 +333,7 @@ public class TasksController : BaseApiController
                 return StatusCode(502, new { message = "AI agent returned an error.", detail = err });
             }
             var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            if (userId != null && result != null)
+            if (userId != null && result.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null)
             {
                 _db.AIActionsLogs.Add(new AIActionsLog
                 {
