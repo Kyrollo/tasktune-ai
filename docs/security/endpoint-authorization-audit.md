@@ -32,6 +32,12 @@ Logout and device-session listing/revocation require authentication. No controll
 | CommunicationsController.GetDeadLetterOutbox | `GET /api/communications/outbox/dead-letter` | CEO/Admin | Current tenant only; dead-letter rows only |
 | CommunicationsController.ReplayDeadLetter | `POST /api/communications/outbox/{id}/replay` | CEO/Admin | Current tenant; approved parent, DeadLetter state, explicit provider non-acceptance attestation and reason |
 
+## Tenant entitlement summary route
+
+| Controller action | Route | Required access | Data and tenant boundary |
+|---|---|---|---|
+| TenantEntitlementsController.GetMyEntitlements | `GET /api/tenant/entitlements` | Authenticated session | Tenant ID is read from the validated JWT; returns plan status, capacities and feature flags visible only within the current tenant context |
+
 ## Platform plan and subscription routes
 
 | Controller action | Route | Required access | Data and safety boundary |

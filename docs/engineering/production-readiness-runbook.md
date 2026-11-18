@@ -135,3 +135,8 @@ AI chat creation/message sending requires the `ai.chat` plan feature; task-guida
 ## 17. Plan administration regression coverage
 
 CI tests cover plan creation and duplicate-code rejection, feature switch normalization and limits, initial tenant subscription assignment, plan changes, immutable event history, and invalid actor/tenant/plan/status/period/reason rejection. Platform plan and subscription controllers are metadata-tested to require the PlatformAdmin policy.
+
+
+## 16. Tenant entitlement self-service
+
+Tenant users may view their current plan and enabled modules through GET /api/tenant/entitlements. The endpoint derives the tenant from the authenticated token and returns no data for another company. Treat NULL capacity values as unlimited only when an active plan is present; an inactive/expired subscription has no usable plan limits and no enabled features.

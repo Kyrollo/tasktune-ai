@@ -315,3 +315,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## Entitlement coverage correction
 
 - Added the same ai.task_guidance plan entitlement requirement to the second task-guidance entry point, POST /api/tasks/ai-recommendation. This prevents the alternate recommendation route from bypassing a tenant's AI feature entitlement.
+
+
+## P2 — tenant entitlement self-service view
+
+- Added authenticated GET /api/tenant/entitlements, deriving tenant identity only from the validated JWT company claim.
+- The summary returns the assigned plan, active/trial/expired/cancelled status, effective dates, current plan capacities and each feature switch. Expired/inactive subscriptions and disabled features are represented as unavailable; capacity values are withheld when the subscription is not active.
+- The tenant query filter remains the final boundary if a caller attempts to request another company ID through direct service use; the HTTP endpoint does not accept one.
+- Added an API authorization metadata test and a tenant-scoped controller regression test.

@@ -1,3 +1,16 @@
+public sealed record TenantEntitlementSummary(
+    int CompanyId,
+    string? PlanCode,
+    string? PlanName,
+    string? SubscriptionStatus,
+    DateTime? StartsAt,
+    DateTime? EndsAt,
+    bool HasActiveSubscription,
+    int? MaxUsers,
+    long? MaxStorageBytes,
+    long? MonthlyAiTokenLimit,
+    IReadOnlyList<TenantFeatureEntitlement> Features);
+
 using Microsoft.EntityFrameworkCore;
 using TaskTune.Infrastructure.Models;
 
@@ -16,6 +29,72 @@ public sealed record TenantFeatureEntitlement(
 /// </summary>
 public sealed class TenantEntitlementService(TaskTuneDbContext db)
 {
+    public async Task<TenantEntitlementSummary> GetTenantSummaryAsync(
+        int companyId, CancellationToken cancellationToken = default)
+    {
+        if (companyId <= 0)
+            return new TenantEntitlementSummary(companyId, null, null, null, null, null, false,
+                null, null, null, Array.Empty<TenantFeatureEntitlement>());
+
+        var now = DateTime.UtcNow;
+        var subscription = await db.TenantSubscriptions.AsNoTracking()
+            .Where(item => item.CompanyId == companyId)
+            .Select(item => new
+            {
+                item.PlanId,
+                item.Status,
+                item.StartsAt,
+                item.EndsAt,
+                PlanCode = item.Plan.Code,
+                PlanName = item.Plan.Name,
+                PlanIsActive = item.Plan.IsActive,
+                item.Plan.MaxUsers,
+                item.Plan.MaxStorageBytes,
+                item.Plan.MonthlyAiTokenLimit
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (subscription == null)
+            return new TenantEntitlementSummary(companyId, null, null, null, null, null, false,
+                null, null, null, Array.Empty<TenantFeatureEntitlement>());
+
+        var active = subscription.PlanIsActive &&
+            (subscription.Status == "Active" || subscription.Status == "Trial") &&
+            subscription.StartsAt <= now &&
+            (!subscription.EndsAt.HasValue || subscription.EndsAt.Value > now);
+
+        var rows = await db.SubscriptionPlanFeatures.AsNoTracking()
+            .Where(feature => feature.PlanId == subscription.PlanId)
+            .OrderBy(feature => feature.FeatureCode)
+            .Select(feature => new { feature.FeatureCode, feature.IsEnabled, feature.LimitValue })
+            .ToListAsync(cancellationToken);
+
+        var features = rows.Select(feature =>
+        {
+            var enabled = active && feature.IsEnabled;
+            return new TenantFeatureEntitlement(
+                enabled,
+                feature.FeatureCode,
+                subscription.PlanCode,
+                enabled ? feature.LimitValue : null,
+                enabled ? "Feature is enabled by the current plan." :
+                    "Feature is not available on the current subscription.");
+        }).ToArray();
+
+        return new TenantEntitlementSummary(
+            companyId,
+            subscription.PlanCode,
+            subscription.PlanName,
+            subscription.Status,
+            subscription.StartsAt,
+            subscription.EndsAt,
+            active,
+            active ? subscription.MaxUsers : null,
+            active ? subscription.MaxStorageBytes : null,
+            active ? subscription.MonthlyAiTokenLimit : null,
+            features);
+    }
+
     public async Task<TenantFeatureEntitlement> GetFeatureAccessAsync(
         int companyId, string featureCode, CancellationToken cancellationToken = default)
     {

@@ -122,6 +122,14 @@ public sealed class ControllerAuthorizationMetadataTests
     }
 
     [Fact]
+    public void TenantEntitlementsControllerRequiresAuthentication()
+    {
+        var controller = typeof(TenantEntitlementsController);
+        Assert.NotEmpty(controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true));
+        Assert.Null(controller.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true));
+    }
+
+    [Fact]
     public void PlatformPlansAndSubscriptionsRequirePlatformAdminPolicy()
     {
         foreach (var controller in new[] { typeof(PlatformPlansController), typeof(PlatformSubscriptionsController) })
