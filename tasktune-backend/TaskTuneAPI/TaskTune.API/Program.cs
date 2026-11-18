@@ -79,6 +79,7 @@ builder.Services.AddDbContext<TaskTuneDbContext>(options =>
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITransactionalEmailSender, SmtpTransactionalEmailSender>();
+builder.Services.AddScoped<TenantSeatCapacityService>();
 builder.Services.AddScoped<AccountSecurityWorkflowService>();
 builder.Services.AddScoped<CommunicationApprovalService>();
 builder.Services.AddScoped<CommunicationOutboxOperationsService>();

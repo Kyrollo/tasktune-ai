@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -17,15 +18,18 @@ public sealed class AccountSecurityWorkflowService
     private readonly TaskTuneDbContext _db;
     private readonly ITransactionalEmailSender _email;
     private readonly IConfiguration _configuration;
+    private readonly TenantSeatCapacityService _seatCapacity;
 
     public AccountSecurityWorkflowService(
         TaskTuneDbContext db,
         ITransactionalEmailSender email,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        TenantSeatCapacityService seatCapacity)
     {
         _db = db;
         _email = email;
         _configuration = configuration;
+        _seatCapacity = seatCapacity;
     }
 
     public async Task<AccountWorkflowResult> CreateInvitationAsync(
@@ -56,11 +60,6 @@ public sealed class AccountSecurityWorkflowService
         }
 
         var now = DateTime.UtcNow;
-        var staleInvites = await _db.AccountSecurityTokens.Where(t =>
-            t.CompanyId == companyId && t.Purpose == InvitationPurpose &&
-            t.Email == normalizedEmail && t.ConsumedAt == null).ToListAsync(cancellationToken);
-        foreach (var stale in staleInvites) stale.ConsumedAt = now;
-
         var rawToken = CreateOpaqueToken();
         var invite = new AccountSecurityToken
         {
@@ -75,8 +74,40 @@ public sealed class AccountSecurityWorkflowService
             CreatedAt = now,
             ExpiresAt = now.AddHours(48)
         };
-        _db.AccountSecurityTokens.Add(invite);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        var relational = _db.Database.IsRelational();
+        await using var transaction = relational
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        try
+        {
+            // Replace a prior invitation for this address first; it no longer reserves a seat.
+            var staleInvites = await _db.AccountSecurityTokens.Where(t =>
+                t.CompanyId == companyId && t.Purpose == InvitationPurpose &&
+                t.Email == normalizedEmail && t.ConsumedAt == null).ToListAsync(cancellationToken);
+            foreach (var stale in staleInvites) stale.ConsumedAt = now;
+            if (staleInvites.Count > 0)
+                await _db.SaveChangesAsync(cancellationToken);
+
+            var capacity = await _seatCapacity.CheckAndLockAsync(companyId, cancellationToken);
+            if (capacity.Result != TenantSeatCapacityResult.Allowed)
+            {
+                if (transaction != null)
+                    await transaction.RollbackAsync(cancellationToken);
+                return new(false, TenantSeatCapacityService.GetErrorMessage(capacity));
+            }
+
+            _db.AccountSecurityTokens.Add(invite);
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction != null)
+                await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (transaction != null)
+                await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
 
         try
         {

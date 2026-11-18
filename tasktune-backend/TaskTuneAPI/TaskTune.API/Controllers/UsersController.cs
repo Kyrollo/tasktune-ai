@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,11 +16,16 @@ public class UsersController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly AccountSecurityWorkflowService _accountWorkflow;
+    private readonly TenantSeatCapacityService _seatCapacity;
 
-    public UsersController(TaskTuneDbContext db, AccountSecurityWorkflowService accountWorkflow)
+    public UsersController(
+        TaskTuneDbContext db,
+        AccountSecurityWorkflowService accountWorkflow,
+        TenantSeatCapacityService seatCapacity)
     {
         _db = db;
         _accountWorkflow = accountWorkflow;
+        _seatCapacity = seatCapacity;
     }
 
     [HttpGet]
@@ -105,8 +111,43 @@ public class UsersController : BaseApiController
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+        var relational = _db.Database.IsRelational();
+        await using var transaction = relational
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+            : null;
+        try
+        {
+            var capacity = await _seatCapacity.CheckAndLockAsync(companyId.Value);
+            if (capacity.Result != TenantSeatCapacityResult.Allowed)
+            {
+                if (transaction != null)
+                    await transaction.RollbackAsync();
+                var statusCode = capacity.Result == TenantSeatCapacityResult.LimitReached
+                    ? StatusCodes.Status409Conflict
+                    : StatusCodes.Status403Forbidden;
+                return StatusCode(statusCode, new
+                {
+                    code = "tenant_seat_capacity",
+                    message = TenantSeatCapacityService.GetErrorMessage(capacity),
+                    capacity.ActiveUsers,
+                    capacity.PendingInvitations,
+                    capacity.SeatsReserved,
+                    capacity.MaxUsers
+                });
+            }
+
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+            if (transaction != null)
+                await transaction.CommitAsync();
+        }
+        catch
+        {
+            if (transaction != null)
+                await transaction.RollbackAsync();
+            throw;
+        }
+
         await AuditLogWriter.WriteAsync(_db, HttpContext, actorId, action: "CREATE",
             resourceType: "User", resourceId: user.UserId,
             after: new { user.UserId, user.Email, user.Role, user.DepartmentId, user.PositionId });
