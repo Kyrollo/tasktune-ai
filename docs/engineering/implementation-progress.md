@@ -390,3 +390,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — platform tenant controller test fixture
 
 - Updated the existing PlatformTenantsController unit-test fixture to provide the new TenantUsageMeterService dependency introduced by the platform-only tenant usage action.
+
+
+## CI correction — remove the superseded chatbot entry-point body
+
+- Removed a duplicated legacy generate_reply body left after introducing usage-aware chatbot routing. The new generate_reply function remains the sole entry point.

@@ -313,31 +313,3 @@ def generate_reply(state: ChatbotState) -> dict[str, Any]:
     combined = merge_token_usage(plan_result.get("token_usage"), direct_result.get("token_usage"))
     direct_result["token_usage"] = combined or None
     return direct_result
-state: ChatbotState) -> dict[str, str | None]:
-    """Main entry point — routes to the correct handler based on phase."""
-    request = state["input"]
-    phase = (request.sql_context.phase or "").lower() if request.sql_context else ""
-
-    # Phase-based routing (used by the C# backend for multi-step flow):
-    # Phase "plan" → generate SQL query
-    # Phase "answer" → format SQL results into answer
-    # No phase → the agent decides: try SQL plan first, if no SQL needed, reply directly
-    if phase == "plan":
-        return _generate_sql_plan(request)
-
-    if phase == "answer":
-        return _generate_sql_answer(request)
-
-    # Auto-mode: try SQL first, fall back to direct
-    plan_result = _generate_sql_plan(request)
-
-    if plan_result.get("sql_query"):
-        # SQL query was generated — return it so the backend can execute it
-        return plan_result
-
-    # No SQL needed — return the direct reply from the plan step
-    if plan_result.get("reply"):
-        return {"reply": plan_result["reply"], "mode_used": "direct"}
-
-    # Final fallback
-    return _generate_direct_reply(request)
