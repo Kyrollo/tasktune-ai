@@ -130,3 +130,8 @@ Apply `20261118_007_subscription_entitlements.sql` after the tenant lifecycle mi
 ## 15. Server-side feature gate behavior
 
 AI chat creation/message sending requires the `ai.chat` plan feature; task-guidance generation requires `ai.task_guidance`. The API checks the tenant's active/trial subscription, start/end period, plan active state and explicit feature switch for each protected action. Missing subscription or feature rows are denied with HTTP 403. Reading previous chats and guidance remains available when write/generation access is not entitled.
+
+
+## 17. Plan administration regression coverage
+
+CI tests cover plan creation and duplicate-code rejection, feature switch normalization and limits, initial tenant subscription assignment, plan changes, immutable event history, and invalid actor/tenant/plan/status/period/reason rejection. Platform plan and subscription controllers are metadata-tested to require the PlatformAdmin policy.

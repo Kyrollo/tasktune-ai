@@ -32,6 +32,16 @@ Logout and device-session listing/revocation require authentication. No controll
 | CommunicationsController.GetDeadLetterOutbox | `GET /api/communications/outbox/dead-letter` | CEO/Admin | Current tenant only; dead-letter rows only |
 | CommunicationsController.ReplayDeadLetter | `POST /api/communications/outbox/{id}/replay` | CEO/Admin | Current tenant; approved parent, DeadLetter state, explicit provider non-acceptance attestation and reason |
 
+## Platform plan and subscription routes
+
+| Controller action | Route | Required access | Data and safety boundary |
+|---|---|---|---|
+| PlatformPlansController.GetPlans | `GET /api/platform/plans` | PlatformAdmin claim | Global plan catalogue and feature switches |
+| PlatformPlansController.CreatePlan | `POST /api/platform/plans` | PlatformAdmin claim | Validated plan fields; create audit log |
+| PlatformPlansController.SetFeature | `PUT /api/platform/plans/{id}/features/{featureCode}` | PlatformAdmin claim | Explicit feature switch and non-negative limit; audit log |
+| PlatformSubscriptionsController.GetTenantSubscription | `GET /api/platform/subscriptions/tenants/{companyId}` | PlatformAdmin claim | One tenant subscription and latest 100 assignment events |
+| PlatformSubscriptionsController.AssignTenantSubscription | `PUT /api/platform/subscriptions/tenants/{companyId}` | PlatformAdmin claim | Active plan, supported status and period, mandatory reason, transactional event history |
+
 ## Platform tenant lifecycle routes
 
 | Controller action | Route | Required access | Resource / audit boundary |

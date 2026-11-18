@@ -299,3 +299,9 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - The migration creates an idempotent Legacy compatibility plan and assigns it to pre-existing companies, preserving current AI chat and task-guidance behavior.
 - New tenants without an active/trial subscription will be denied feature-gated actions by default. Seat, storage and monthly AI-token limit fields are included for upcoming usage enforcement; no metering or billing processor is claimed yet.
 
+
+
+## P2 — platform plan and subscription administration tests
+
+- Added regression coverage for plan code normalization/uniqueness, feature switches and limits, tenant assignment/update history, and invalid actors, tenants, plans, statuses, periods and reasons.
+- Added controller metadata tests requiring the PlatformAdmin policy on both plan and subscription endpoints.
