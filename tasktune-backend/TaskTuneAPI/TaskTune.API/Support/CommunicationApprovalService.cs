@@ -83,6 +83,15 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db, IConfigur
         approval.Status = "Approved";
         approval.ReviewedByUserId = reviewerId;
         approval.ReviewedAt = now;
+        db.Notifications.Add(new Notification
+        {
+            UserId = approval.RequestedByUserId,
+            NotificationType = 0,
+            Title = "Communication approved",
+            Message = $"Your communication request \"{approval.Subject}\" was approved and queued for {recipients.Count} recipient(s). Delivery is pending.",
+            IsRead = false,
+            SentAt = now
+        });
         db.CommunicationOutbox.AddRange(outboxRows);
         try
         {
@@ -133,6 +142,15 @@ public sealed class CommunicationApprovalService(TaskTuneDbContext db, IConfigur
         approval.ReviewedByUserId = reviewerId;
         approval.ReviewedAt = DateTime.UtcNow;
         approval.RejectionReason = reason.Trim();
+        db.Notifications.Add(new Notification
+        {
+            UserId = approval.RequestedByUserId,
+            NotificationType = 0,
+            Title = "Communication rejected",
+            Message = $"Your communication request \"{approval.Subject}\" was rejected. Reason: {reason.Trim()}",
+            IsRead = false,
+            SentAt = approval.ReviewedAt.Value
+        });
         try
         {
             await db.SaveChangesAsync(cancellationToken);

@@ -231,3 +231,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## Queue quota test dependency correction
 
 - CI confirmed the API and metrics service build, but the quota test required the Microsoft.Extensions.Configuration.Memory provider used by its in-memory configuration setup. Added the test-project package reference at the same .NET 10 package version as the existing configuration dependency.
+
+
+## Completed — communication approval notifications
+
+- Successful approval now creates an in-app notification for the original requester stating that the request was approved, how many recipients were queued, and that delivery remains pending.
+- Rejection creates an in-app notification for the requester with the recorded rejection reason.
+- Notification records are saved in the same transaction/save as the approval or rejection state change. Failed/self-review attempts do not create notifications.
+- Updated the notifications page to render the communication notification type as informational.
+- External email notifications are not sent by this feature; the SMTP worker remains disabled by default.

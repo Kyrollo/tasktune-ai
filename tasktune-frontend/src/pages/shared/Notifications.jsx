@@ -12,7 +12,9 @@ export default function Notifications() {
 
   const normalize = (n) => ({
     id: n.notificationId ?? n.id,
-    type: n.notificationType ?? n.type ?? 'info',
+    type: n.notificationType === 0 || n.notificationType === '0'
+      ? 'info'
+      : n.notificationType ?? n.type ?? 'info',
     title: n.title ?? '',
     message: n.message ?? '',
     read: n.isRead === true || n.isRead === 1 || n.read === true || n.read === 1,

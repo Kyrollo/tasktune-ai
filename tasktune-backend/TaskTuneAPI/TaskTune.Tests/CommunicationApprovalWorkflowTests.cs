@@ -36,6 +36,11 @@ public sealed class CommunicationApprovalWorkflowTests
         Assert.All(outbox, item => Assert.Equal("Pending", item.Status));
         Assert.Equal(2, outbox.Select(x => x.IdempotencyKey).Distinct().Count());
         Assert.All(outbox, item => Assert.Equal(64, item.IdempotencyKey.Length));
+        var approvalNotification = await db.Notifications.SingleAsync();
+        Assert.Equal(requester.UserId, approvalNotification.UserId);
+        Assert.Equal("Communication approved", approvalNotification.Title);
+        Assert.Contains("2 recipient(s)", approvalNotification.Message);
+        Assert.False(approvalNotification.IsRead);
         Assert.Equal(CommunicationApprovalResult.AlreadyReviewed,
             await service.ApproveAsync(approval.ApprovalId, 1, reviewer.UserId));
         Assert.Equal(2, await db.CommunicationOutbox.CountAsync());
@@ -111,6 +116,10 @@ public sealed class CommunicationApprovalWorkflowTests
         Assert.Equal("Rejected", saved.Status);
         Assert.Equal("Policy violation", saved.RejectionReason);
         Assert.Empty(await db.CommunicationOutbox.ToListAsync());
+        var rejectionNotification = await db.Notifications.SingleAsync();
+        Assert.Equal(requester.UserId, rejectionNotification.UserId);
+        Assert.Equal("Communication rejected", rejectionNotification.Title);
+        Assert.Contains("Policy violation", rejectionNotification.Message);
     }
 
     private static CommunicationApproval CreateApproval(int id, User requester, List<string> recipients) => new()
