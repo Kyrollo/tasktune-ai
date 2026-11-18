@@ -68,6 +68,7 @@ public class ChatbotController : BaseApiController
     }
 
     [HttpPost("threads")]
+    [RequiresTenantFeature("ai.chat")]
     public async Task<IActionResult> CreateThread([FromBody] CreateChatThreadRequest? request)
     {
         var userId = GetCurrentUserId();
@@ -148,6 +149,7 @@ public class ChatbotController : BaseApiController
     }
 
     [HttpPost("threads/{threadId:int}/messages")]
+    [RequiresTenantFeature("ai.chat")]
     public async Task<IActionResult> SendMessage(int threadId, [FromBody] SendChatMessageRequest request)
     {
         var userId = GetCurrentUserId();

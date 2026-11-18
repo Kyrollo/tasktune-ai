@@ -125,3 +125,8 @@ The platform tenant inventory and lifecycle endpoints require the PlatformAdmin 
 ## 14. P2 plan and entitlement schema
 
 Apply `20261118_007_subscription_entitlements.sql` after the tenant lifecycle migration. Existing tenants are assigned the Legacy plan to preserve current AI chat and task-guidance behavior. The migration does not create paid plans or enable payment collection. New tenants without an active/trial subscription are denied feature-gated actions by default. Plan capacity fields are not hard quotas until the usage-metering slice is implemented.
+
+
+## 15. Server-side feature gate behavior
+
+AI chat creation/message sending requires the `ai.chat` plan feature; task-guidance generation requires `ai.task_guidance`. The API checks the tenant's active/trial subscription, start/end period, plan active state and explicit feature switch for each protected action. Missing subscription or feature rows are denied with HTTP 403. Reading previous chats and guidance remains available when write/generation access is not entitled.

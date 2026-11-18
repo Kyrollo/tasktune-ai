@@ -287,8 +287,15 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - This is an API foundation; platform admin dashboard UI, subscription plans/entitlements and usage metering remain outstanding.
 
 
+## P2 — server-side feature entitlement enforcement
+
+- Added a fail-closed entitlement service: active/trial subscription, valid period, active plan and explicit enabled plan feature are all required.
+- Added an authorization filter and applied it to AI chat creation/message sending and task-guidance generation. Existing read access to prior chat/task records remains available.
+- Added tests for allowed, missing-subscription, disabled-feature, past-due, cancelled and expired subscription cases.
+
 ## P2 — plan/feature entitlement schema
 
 - Added a global subscription-plan catalogue, plan feature switches, a single current subscription per tenant and append-only subscription assignment history.
 - The migration creates an idempotent Legacy compatibility plan and assigns it to pre-existing companies, preserving current AI chat and task-guidance behavior.
 - New tenants without an active/trial subscription will be denied feature-gated actions by default. Seat, storage and monthly AI-token limit fields are included for upcoming usage enforcement; no metering or billing processor is claimed yet.
+

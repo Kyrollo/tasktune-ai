@@ -165,6 +165,7 @@ public class TasksController : BaseApiController
     }
 
     [HttpPost("{id:int}/guidance/generate")]
+    [RequiresTenantFeature("ai.task_guidance")]
     public async Task<IActionResult> GenerateGuidance(int id)
     {
         var userId = GetCurrentUserId();
