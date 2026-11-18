@@ -395,3 +395,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — remove the superseded chatbot entry-point body
 
 - Removed a duplicated legacy generate_reply body left after introducing usage-aware chatbot routing. The new generate_reply function remains the sole entry point.
+
+
+## P2 — provider token usage reaches the tenant ledger
+
+- Agent 1 chatbot and Agent 2 task-guidance retain the raw provider message and expose input/output/total token counts only when the provider returns valid usage metadata.
+- Chatbot auto mode aggregates usage across plan and direct-reply calls. Task guidance accumulates usage across complexity analysis, guidance, risk assessment and success-criteria calls.
+- Added a tenant-scoped AddAiTokenUsageEvent method that stages provider-reported totals in the same DbContext unit of work as AI action/chat records.
+- Chatbot and both task-guidance endpoints persist a usage event only when a positive provider-reported total_tokens is present. No counts are estimated from prompt length or configured max-token values.
+- The monthly AI limit remains report-only until a reservation/settlement design is implemented and concurrency-tested.

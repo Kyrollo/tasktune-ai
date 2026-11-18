@@ -155,3 +155,8 @@ Task attachment uploads are staged in private storage, then checked against the 
 ## 22. Platform usage console
 
 The platform console's tenant detail view now requests the selected tenant's usage alongside its lifecycle and subscription details. The displayed period is the current UTC month. Operators should interpret “Not reported” AI tokens as missing provider telemetry, not as zero. The platform-only endpoint uses explicit company filters for every cross-tenant aggregate.
+
+
+## 23. Provider-reported AI token telemetry
+
+Agent 1 chatbot and Agent 2 task guidance return an optional token_usage object with input, output and total tokens when the provider response includes those values. The .NET API persists only a positive reported total into TenantUsageEvents using the current tenant context and a fresh opaque idempotency key, in the same EF save as the corresponding AI action/chat record. Missing metadata means "not reported", never zero. Monthly token-cap enforcement remains disabled until reservation/settlement semantics are implemented and concurrency-tested.

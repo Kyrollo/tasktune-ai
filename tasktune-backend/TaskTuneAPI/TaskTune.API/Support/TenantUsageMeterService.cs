@@ -181,6 +181,39 @@ public sealed class TenantUsageMeterService(TaskTuneDbContext db)
             tokenLimit.HasValue && aiTokens.HasValue ? aiTokens.Value > tokenLimit.Value : null);
     }
 
+    /// <summary>
+    /// Adds provider-reported token usage to the current DbContext unit of work. Callers
+    /// save it with the AI action/message record so usage cannot commit independently.
+    /// The caller must supply a fresh opaque idempotency key.
+    /// </summary>
+    public UsageRecordResult AddAiTokenUsageEvent(
+        long quantity, string idempotencyKey, string source, DateTime occurredAt)
+    {
+        var companyId = db.CurrentTenantId;
+        if (!companyId.HasValue || companyId.Value <= 0)
+            return UsageRecordResult.MissingTenantContext;
+        if (quantity <= 0 ||
+            string.IsNullOrWhiteSpace(idempotencyKey) ||
+            idempotencyKey.Trim().Length is < 16 or > 128 ||
+            string.IsNullOrWhiteSpace(source) ||
+            source.Trim().Length > 100 ||
+            occurredAt == default ||
+            occurredAt > DateTime.UtcNow.AddMinutes(5))
+            return UsageRecordResult.InvalidInput;
+
+        db.TenantUsageEvents.Add(new TenantUsageEvent
+        {
+            CompanyId = companyId.Value,
+            MeterCode = "ai.tokens",
+            Quantity = quantity,
+            IdempotencyKey = idempotencyKey.Trim(),
+            Source = source.Trim(),
+            OccurredAt = occurredAt,
+            CreatedAt = DateTime.UtcNow
+        });
+        return UsageRecordResult.Recorded;
+    }
+
     public async Task<UsageRecordResult> RecordAiTokensAsync(
         long quantity, string idempotencyKey, string source,
         DateTime occurredAt, CancellationToken cancellationToken = default)

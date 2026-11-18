@@ -18,12 +18,18 @@ public class TasksController : BaseApiController
     private readonly ITaskService _taskService;
     private readonly TaskTuneDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly TenantUsageMeterService _usage;
 
-    public TasksController(ITaskService taskService, TaskTuneDbContext db, IConfiguration configuration)
+    public TasksController(
+        ITaskService taskService,
+        TaskTuneDbContext db,
+        IConfiguration configuration,
+        TenantUsageMeterService usage)
     {
         _taskService = taskService;
         _db = db;
         _configuration = configuration;
+        _usage = usage;
     }
 
     [HttpGet]
@@ -233,7 +239,7 @@ public class TasksController : BaseApiController
                 var err = await response.Content.ReadAsStringAsync();
                 return StatusCode(502, new { message = "AI agent returned an error." });
             }
-            var result = await response.Content.ReadFromJsonAsync<object>() ?? new { guidance_text = "", suggested_subtasks = Array.Empty<string>() };
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
             if (userId != null)
             {
                 _db.AIActionsLogs.Add(new AIActionsLog
@@ -257,6 +263,7 @@ public class TasksController : BaseApiController
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
                 });
+                AddReportedAiTokenUsage(result, "task_guidance");
                 await _db.SaveChangesAsync();
                 await AuditLogWriter.WriteAsync(
                     _db,
@@ -325,7 +332,7 @@ public class TasksController : BaseApiController
                 var err = await response.Content.ReadAsStringAsync();
                 return StatusCode(502, new { message = "AI agent returned an error.", detail = err });
             }
-            var result = await response.Content.ReadFromJsonAsync<object>();
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
             if (userId != null && result != null)
             {
                 _db.AIActionsLogs.Add(new AIActionsLog
@@ -337,6 +344,7 @@ public class TasksController : BaseApiController
                     ModelVersion = agentConfig.Model,
                     Timestamp = DateTime.UtcNow
                 });
+                AddReportedAiTokenUsage(result, "task_guidance");
                 await _db.SaveChangesAsync();
             }
             return Ok(result);
@@ -492,6 +500,23 @@ public class TasksController : BaseApiController
             .FirstOrDefaultAsync();
 
         return Ok(ParseOutput(latest) ?? new { });
+    }
+
+    private void AddReportedAiTokenUsage(JsonElement result, string source)
+    {
+        if (result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("token_usage", out var usage) ||
+            usage.ValueKind != JsonValueKind.Object ||
+            !usage.TryGetProperty("total_tokens", out var total) ||
+            !total.TryGetInt64(out var totalTokens) ||
+            totalTokens <= 0)
+            return;
+
+        _usage.AddAiTokenUsageEvent(
+            totalTokens,
+            $"task-ai-{Guid.NewGuid():N}",
+            source,
+            DateTime.UtcNow);
     }
 
     private static object? ParseOutput(string? outputData)

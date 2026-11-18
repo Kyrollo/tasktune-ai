@@ -173,6 +173,33 @@ public sealed class TenantUsageMeterServiceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task AddAiTokenUsageEventAddsPositiveProviderUsageToCurrentTenant()
+    {
+        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new TaskTuneDbContext(options, new FixedTenantContext(44));
+        db.Companies.Add(new Company
+        {
+            CompanyId = 44, CompanyName = "Usage tenant", SettingsJson = "{}",
+            Status = "Active", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var service = new TenantUsageMeterService(db);
+
+        Assert.Equal(UsageRecordResult.Recorded,
+            service.AddAiTokenUsageEvent(4321, "chat-ai-usage-00000001", "chat_assistant", DateTime.UtcNow));
+        Assert.Equal(UsageRecordResult.InvalidInput,
+            service.AddAiTokenUsageEvent(0, "chat-ai-usage-00000002", "chat_assistant", DateTime.UtcNow));
+        await db.SaveChangesAsync();
+
+        var stored = await db.TenantUsageEvents.SingleAsync();
+        Assert.Equal(44, stored.CompanyId);
+        Assert.Equal("ai.tokens", stored.MeterCode);
+        Assert.Equal(4321, stored.Quantity);
+        Assert.Equal("chat_assistant", stored.Source);
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task MissingTenantContextCannotRecordOrReadTenantUsage()
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>()

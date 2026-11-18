@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,12 +17,17 @@ public class ChatbotController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly TenantUsageMeterService _usage;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public ChatbotController(TaskTuneDbContext db, IConfiguration configuration)
+    public ChatbotController(
+        TaskTuneDbContext db,
+        IConfiguration configuration,
+        TenantUsageMeterService usage)
     {
         _db = db;
         _configuration = configuration;
+        _usage = usage;
     }
 
     [HttpGet("threads")]
@@ -211,6 +217,15 @@ public class ChatbotController : BaseApiController
             Timestamp = DateTime.UtcNow
         });
 
+        if (execution.ReportedTokenUsage is > 0)
+        {
+            _usage.AddAiTokenUsageEvent(
+                execution.ReportedTokenUsage.Value,
+                $"chat-ai-{Guid.NewGuid():N}",
+                "chat_assistant",
+                assistantMessage.SentAt);
+        }
+
         await _db.SaveChangesAsync();
 
         return Ok(new
@@ -238,7 +253,8 @@ public class ChatbotController : BaseApiController
                 return new ChatExecutionResult
                 {
                     Reply = directReply.Reply!,
-                    ModelVersion = agentConfig.Model
+                    ModelVersion = agentConfig.Model,
+                    ReportedTokenUsage = directReply.TokenUsage?.TotalTokens
                 };
             }
         }
@@ -617,11 +633,25 @@ public class SendChatMessageRequest
     public string Content { get; set; } = string.Empty;
 }
 
+public sealed class AgentTokenUsage
+{
+    [JsonPropertyName("input_tokens")]
+    public long InputTokens { get; set; }
+
+    [JsonPropertyName("output_tokens")]
+    public long OutputTokens { get; set; }
+
+    [JsonPropertyName("total_tokens")]
+    public long TotalTokens { get; set; }
+}
+
 public class ChatbotAgentResponse
 {
     public string? Reply { get; set; }
     public string? SqlQuery { get; set; }
     public string? ModeUsed { get; set; }
+    [JsonPropertyName("token_usage")]
+    public AgentTokenUsage? TokenUsage { get; set; }
 }
 
 public class ChatExecutionResult
@@ -631,6 +661,7 @@ public class ChatExecutionResult
     public string? ExecutedSql { get; set; }
     public int ResultCount { get; set; }
     public string ModelVersion { get; set; } = "tasktune_ai_assistant";
+    public long? ReportedTokenUsage { get; set; }
 }
 
 public record TaskScopeItem(int TaskId, string TaskName, string ProjectName, string AssignedToName, byte Status, string StatusName, int CompletionPercentage, DateOnly DueDate);
