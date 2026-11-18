@@ -417,3 +417,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - The progress-tracking response includes an optional token_usage object only when provider usage is available.
 - TasksController.AnalyzeProgress records a positive provider-reported total in TenantUsageEvents in the same EF save as its AIActionsLog entry.
 - Fallback/error responses without usage metadata do not create token events.
+
+
+## P2 — email recommendation token metering
+
+- Agent 5 email recommendations now retain the raw provider message through structured output and include optional provider-reported input/output/total token metadata.
+- CommunicationsController.GenerateRecommendation records a positive reported total in TenantUsageEvents in the same DbContext save as the email AI action log, under the email_assistant meter source.
+- Missing provider usage remains unreported; the ledger is not populated with estimates.

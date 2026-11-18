@@ -160,3 +160,8 @@ The platform console's tenant detail view now requests the selected tenant's usa
 ## 23. Provider-reported AI token telemetry
 
 Agent 1 chatbot and Agent 2 task guidance return an optional token_usage object with input, output and total tokens when the provider response includes those values. The .NET API persists only a positive reported total into TenantUsageEvents using the current tenant context and a fresh opaque idempotency key, in the same EF save as the corresponding AI action/chat record. Missing metadata means "not reported", never zero. Monthly token-cap enforcement remains disabled until reservation/settlement semantics are implemented and concurrency-tested.
+
+
+## 26. Email recommendation token telemetry
+
+The email-recommendation agent now returns provider-reported token usage when available. The API records only a positive total under the `email_assistant` source, in the same save as the associated AI action log. No token count is derived from prompt size or configured maximum tokens.

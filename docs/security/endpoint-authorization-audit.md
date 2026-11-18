@@ -108,3 +108,6 @@ The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especia
 | Controller action | Route | Required access | Data and boundary |
 |---|---|---|---|
 | PlatformTenantsController.GetTenantUsage | `GET /api/platform/tenants/{companyId}/usage?year=&month=` | PlatformAdmin claim | Aggregates active users, invitations, task attachments, AI actions and recorded provider token events using explicit company predicates. |
+
+
+| CommunicationsController.GenerateRecommendation | `POST /api/communications/recommendation` | HR/CEO/Admin in current tenant | Email agent provider-reported token usage is recorded as `email_assistant` alongside the AI action log |

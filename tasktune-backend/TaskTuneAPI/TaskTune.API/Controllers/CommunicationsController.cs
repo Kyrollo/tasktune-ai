@@ -19,19 +19,22 @@ public class CommunicationsController : BaseApiController
     private readonly CommunicationApprovalService _approvalService;
     private readonly CommunicationOutboxOperationsService _outboxOperations;
     private readonly CommunicationOutboxMetricsService _outboxMetrics;
+    private readonly TenantUsageMeterService _usage;
 
     public CommunicationsController(
         TaskTuneDbContext db,
         IConfiguration configuration,
         CommunicationApprovalService approvalService,
         CommunicationOutboxOperationsService outboxOperations,
-        CommunicationOutboxMetricsService outboxMetrics)
+        CommunicationOutboxMetricsService outboxMetrics,
+        TenantUsageMeterService usage)
     {
         _db = db;
         _configuration = configuration;
         _approvalService = approvalService;
         _outboxOperations = outboxOperations;
         _outboxMetrics = outboxMetrics;
+        _usage = usage;
     }
 
     [HttpGet]
@@ -244,7 +247,7 @@ public class CommunicationsController : BaseApiController
                 return StatusCode(502, new { message = "Email agent returned an error." });
             }
 
-            var result = await response.Content.ReadFromJsonAsync<object>();
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
             _db.AIActionsLogs.Add(new AIActionsLog
             {
                 ActionType = 5,
@@ -264,6 +267,7 @@ public class CommunicationsController : BaseApiController
                 ModelVersion = agentConfig.Model,
                 Timestamp = DateTime.UtcNow
             });
+            AddReportedAiTokenUsage(result, "email_assistant");
             await _db.SaveChangesAsync();
 
             return Ok(result);
@@ -272,6 +276,23 @@ public class CommunicationsController : BaseApiController
         {
             return StatusCode(502, new { message = "Failed to reach AI email agent." });
         }
+    }
+
+    private void AddReportedAiTokenUsage(JsonElement result, string source)
+    {
+        if (result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("token_usage", out var usage) ||
+            usage.ValueKind != JsonValueKind.Object ||
+            !usage.TryGetProperty("total_tokens", out var total) ||
+            !total.TryGetInt64(out var totalTokens) ||
+            totalTokens <= 0)
+            return;
+
+        _usage.AddAiTokenUsageEvent(
+            totalTokens,
+            $"email-ai-{Guid.NewGuid():N}",
+            source,
+            DateTime.UtcNow);
     }
 
     [HttpGet("approvals")]

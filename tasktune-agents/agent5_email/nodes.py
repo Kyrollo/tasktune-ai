@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from .state import EmailRecommendationState
+from usage_metadata import invoke_structured_with_usage
 
 import os
 MODEL_NAME = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
@@ -62,8 +63,7 @@ def generate_recommendation(state: EmailRecommendationState) -> dict:
         "Return subject, body, cc, send_to, and a short rationale."
     )
 
-    llm = _get_llm(request).with_structured_output(EmailRecommendationResult)
-    result: EmailRecommendationResult = llm.invoke([
+    result, token_usage = invoke_structured_with_usage(_get_llm(request), EmailRecommendationResult, [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ])
@@ -77,4 +77,5 @@ def generate_recommendation(state: EmailRecommendationState) -> dict:
         "cc": cc,
         "send_to": send_to,
         "rationale": result.rationale.strip(),
+        "token_usage": token_usage,
     }

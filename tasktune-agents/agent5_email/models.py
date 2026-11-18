@@ -42,3 +42,4 @@ class EmailRecommendationResponse(BaseModel):
     cc: list[str] = Field(default_factory=list)
     send_to: list[str] = Field(default_factory=list)
     rationale: str = ""
+    token_usage: dict[str, int] | None = None
