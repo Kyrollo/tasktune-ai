@@ -353,3 +353,12 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Both direct Admin user creation and invitations execute the capacity check and insert inside a SERIALIZABLE transaction. On SQL Server the service acquires UPDLOCK/HOLDLOCK on the tenant's unique subscription row; this is the shared lock point for all new seat reservations.
 - NULL MaxUsers is unlimited; no active/trial subscription blocks new users/invitations; capacity exhaustion returns HTTP 409 for direct user creation and a non-success invitation result.
 - Added tests that prove pending invitations consume seats and direct user creation fails when the plan capacity is already full. SQL Server CI is validating the new locking query and transaction path.
+
+
+## P2 — tenant storage quota enforcement
+
+- Added TenantStorageCapacityService, which checks the active/trial plan's MaxStorageBytes against existing TaskAttachment.FileSize totals plus the incoming file.
+- The storage check uses the same per-tenant subscription-row UPDLOCK/HOLDLOCK serialization point as seat reservations and requires the caller's SERIALIZABLE transaction.
+- Attachment uploads now stage in private storage, calculate the actual staged byte size, acquire the subscription lock, and only move the file to its final private key while the attachment metadata insert is inside the same transaction. On failure the staged/final file is cleaned up.
+- Requests that exceed the tenant storage allowance return HTTP 409; missing/inactive subscription returns HTTP 403. NULL MaxStorageBytes means unlimited storage.
+- Added service tests for within-limit uploads, storage-limit exhaustion, missing tenant context and missing active subscription.

@@ -145,3 +145,8 @@ Tenant users may view their current plan and enabled modules through GET /api/te
 ## 19. Seat-capacity transaction and operating rules
 
 A seat is reserved by each active user and each unexpired, unconsumed invitation. The seat check and reservation write must remain inside one SERIALIZABLE transaction. On SQL Server, TenantSeatCapacityService takes UPDLOCK/HOLDLOCK on the tenant subscription row so two simultaneous user/invitation requests serialize on one tenant-specific lock point. Do not move the seat count to a frontend-only check or release the transaction before the user/invitation insert. The invitation completion transaction consumes the invitation while creating the user, preserving one seat reservation. NULL MaxUsers represents an unlimited plan capacity. A tenant without a current Active/Trial subscription cannot provision additional users.
+
+
+## 20. Attachment storage quota enforcement
+
+Task attachment uploads are staged in private storage, then checked against the current subscription's MaxStorageBytes while a SERIALIZABLE transaction holds the tenant subscription row lock. The service sums persisted TaskAttachment.FileSize values and includes the actual staged upload size. The final file move and metadata insert occur before the transaction is committed. Failed or rejected uploads remove their staged file; database failures remove the uncommitted final file. A 409 response means the plan storage cap would be exceeded. NULL MaxStorageBytes means unlimited. This meter covers TaskAttachment objects in the configured private upload root; it does not yet account for other object-store categories or historical orphan files.

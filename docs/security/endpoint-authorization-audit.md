@@ -95,3 +95,9 @@ The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especia
 | UsersController.CreateInvitation | Admin/CEO/HR in current tenant, plus existing role restrictions | Active users + pending invitations; old invite for the same email is consumed and new reservation is inserted under the same locked transaction |
 | AccountSecurityWorkflowService.CompleteInvitation | Anonymous invitation token, email-bound and single-use | Converts one pending invitation reservation into one active user atomically; must not reserve a second seat |
 
+
+
+## Attachment storage quota
+
+- AttachmentsController.UploadAttachment: authenticated user with task access; current JWT tenant must match the task's tenant; storage capacity is checked against the current tenant subscription while holding a SERIALIZABLE transaction and subscription-row lock.
+- The upload is staged privately, checked using actual bytes, and only moved to its final private key with attachment metadata inserted inside the transaction. Plan-cap failure returns Conflict without creating an attachment record.

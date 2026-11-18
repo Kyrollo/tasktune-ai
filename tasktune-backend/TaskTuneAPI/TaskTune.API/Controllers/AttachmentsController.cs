@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,13 +15,19 @@ public class AttachmentsController : BaseApiController
     private readonly TaskTuneDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly ITaskService _taskService;
+    private readonly TenantStorageCapacityService _storageCapacity;
     private const long MaxFileSize = 10 * 1024 * 1024;
 
-    public AttachmentsController(TaskTuneDbContext db, IWebHostEnvironment env, ITaskService taskService)
+    public AttachmentsController(
+        TaskTuneDbContext db,
+        IWebHostEnvironment env,
+        ITaskService taskService,
+        TenantStorageCapacityService storageCapacity)
     {
         _db = db;
         _env = env;
         _taskService = taskService;
+        _storageCapacity = storageCapacity;
     }
 
     private async Task<bool> CanAccessTaskAsync(int taskId)
@@ -76,10 +83,11 @@ public class AttachmentsController : BaseApiController
 
     [HttpPost]
     [RequestSizeLimit(MaxFileSize)]
-    public async Task<IActionResult> UploadAttachment(int taskId, IFormFile file)
+    public async Task<IActionResult> UploadAttachment(int taskId, IFormFile file, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
-        if (userId == null) return Unauthorized();
+        var companyId = GetCurrentCompanyId();
+        if (userId == null || companyId == null) return Unauthorized();
         if (!await _taskService.CanAccessTaskAsync(taskId, userId.Value)) return NotFound();
 
         if (file == null || file.Length <= 0) return BadRequest(new { message = "No file provided." });
@@ -93,46 +101,84 @@ public class AttachmentsController : BaseApiController
         var uploadDirectory = Path.Combine(GetPrivateUploadRoot(), "tasks", taskId.ToString());
         Directory.CreateDirectory(uploadDirectory);
         var fullPath = Path.Combine(uploadDirectory, uniqueName);
+        var temporaryPath = Path.Combine(uploadDirectory, $".{Guid.NewGuid():N}.uploading");
+        string? committedFilePath = null;
 
         try
         {
-            await using var stream = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write,
-                FileShare.None, bufferSize: 81920, FileOptions.Asynchronous);
-            await file.CopyToAsync(stream, HttpContext.RequestAborted);
-        }
-        catch
-        {
-            if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
-            throw;
-        }
-
-        var attachment = new TaskAttachment
-        {
-            TaskId = taskId, UploadedBy = userId.Value, FileName = safeFileName,
-            FilePath = storageKey, FileSize = checked((int)file.Length),
-            MimeType = "application/octet-stream", UploadedAt = DateTime.UtcNow
-        };
-
-        try
-        {
-            _db.TaskAttachments.Add(attachment);
-            await _db.SaveChangesAsync();
-        }
-        catch
-        {
-            if (System.IO.File.Exists(fullPath)) System.IO.File.Delete(fullPath);
-            throw;
-        }
-
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value);
-        return CreatedAtAction(nameof(DownloadAttachment),
-            new { taskId, attachmentId = attachment.AttachmentId },
-            new
+            // Stage into private storage first; do not publish the final object until the
+            // subscription quota and metadata insert are committed together.
+            await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, bufferSize: 81920, FileOptions.Asynchronous))
             {
-                attachment.AttachmentId, attachment.TaskId, attachment.FileName,
-                attachment.FileSize, attachment.UploadedAt, attachment.UploadedBy,
-                UploaderName = user?.FullName
-            });
+                await file.CopyToAsync(stream, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+
+            var actualBytes = new FileInfo(temporaryPath).Length;
+            if (actualBytes <= 0 || actualBytes > MaxFileSize)
+                return BadRequest(new { message = "File size exceeds 10 MB limit." });
+
+            var relational = _db.Database.IsRelational();
+            await using var transaction = relational
+                ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+                : null;
+            var capacity = await _storageCapacity.CheckAndLockAsync(companyId.Value, actualBytes, cancellationToken);
+            if (capacity.Result != TenantStorageCapacityResult.Allowed)
+            {
+                if (transaction != null)
+                    await transaction.RollbackAsync(cancellationToken);
+                var statusCode = capacity.Result == TenantStorageCapacityResult.LimitExceeded
+                    ? StatusCodes.Status409Conflict
+                    : StatusCodes.Status403Forbidden;
+                return StatusCode(statusCode, new
+                {
+                    code = "tenant_storage_capacity",
+                    message = TenantStorageCapacityService.GetErrorMessage(capacity),
+                    capacity.CurrentStorageBytes,
+                    capacity.RequestedBytes,
+                    capacity.MaxStorageBytes
+                });
+            }
+
+            File.Move(temporaryPath, fullPath);
+            committedFilePath = fullPath;
+            var attachment = new TaskAttachment
+            {
+                TaskId = taskId,
+                UploadedBy = userId.Value,
+                FileName = safeFileName,
+                FilePath = storageKey,
+                FileSize = checked((int)actualBytes),
+                MimeType = "application/octet-stream",
+                UploadedAt = DateTime.UtcNow
+            };
+            _db.TaskAttachments.Add(attachment);
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction != null)
+                await transaction.CommitAsync(cancellationToken);
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId.Value, cancellationToken);
+            return CreatedAtAction(nameof(DownloadAttachment),
+                new { taskId, attachmentId = attachment.AttachmentId },
+                new
+                {
+                    attachment.AttachmentId, attachment.TaskId, attachment.FileName,
+                    attachment.FileSize, attachment.UploadedAt, attachment.UploadedBy,
+                    UploaderName = user?.FullName
+                });
+        }
+        catch
+        {
+            if (System.IO.File.Exists(temporaryPath)) System.IO.File.Delete(temporaryPath);
+            if (committedFilePath != null && System.IO.File.Exists(committedFilePath))
+                System.IO.File.Delete(committedFilePath);
+            throw;
+        }
+        finally
+        {
+            if (System.IO.File.Exists(temporaryPath)) System.IO.File.Delete(temporaryPath);
+        }
     }
 
     private string GetPrivateUploadRoot() =>
