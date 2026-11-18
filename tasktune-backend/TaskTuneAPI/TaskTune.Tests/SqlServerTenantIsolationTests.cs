@@ -99,6 +99,7 @@ public sealed class SqlServerTenantIsolationTests
             await tenantOne.UserSettings.CountAsync();
             await tenantOne.UserSessions.CountAsync();
             await tenantOne.AccountSecurityTokens.CountAsync();
+            await tenantOne.TenantUsageEvents.CountAsync();
             await tenantOne.TenantLifecycleEvents.CountAsync();
             }
 

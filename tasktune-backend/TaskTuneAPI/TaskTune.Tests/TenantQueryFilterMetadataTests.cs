@@ -35,7 +35,8 @@ public sealed class TenantQueryFilterMetadataTests
         typeof(UserSetting),
         typeof(UserSession),
         typeof(AccountSecurityToken),
-        typeof(TenantLifecycleEvent)
+        typeof(TenantLifecycleEvent),
+        typeof(TenantUsageEvent)
     ];
 
     [Fact]
