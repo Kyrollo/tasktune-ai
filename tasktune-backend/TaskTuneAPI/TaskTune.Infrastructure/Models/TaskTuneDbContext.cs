@@ -32,6 +32,10 @@ public partial class TaskTuneDbContext : DbContext
     public virtual DbSet<CommunicationApproval> CommunicationApprovals { get; set; }
     public virtual DbSet<CommunicationOutbox> CommunicationOutbox { get; set; }
     public virtual DbSet<TenantLifecycleEvent> TenantLifecycleEvents { get; set; }
+    public virtual DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
+    public virtual DbSet<SubscriptionPlanFeature> SubscriptionPlanFeatures { get; set; }
+    public virtual DbSet<TenantSubscription> TenantSubscriptions { get; set; }
+    public virtual DbSet<TenantSubscriptionEvent> TenantSubscriptionEvents { get; set; }
 
     public virtual DbSet<Company> Companies { get; set; }
 
@@ -291,6 +295,42 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
             entity.HasIndex(e => new { e.CompanyId, e.CreatedAt });
             entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<SubscriptionPlan>(entity =>
+        {
+            entity.ToTable("SubscriptionPlans"); entity.HasKey(e => e.PlanId);
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(120);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+        modelBuilder.Entity<SubscriptionPlanFeature>(entity =>
+        {
+            entity.ToTable("SubscriptionPlanFeatures"); entity.HasKey(e => new { e.PlanId, e.FeatureCode });
+            entity.Property(e => e.FeatureCode).IsRequired().HasMaxLength(100);
+            entity.HasOne<SubscriptionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<TenantSubscription>(entity =>
+        {
+            entity.ToTable("TenantSubscriptions"); entity.HasKey(e => e.SubscriptionId);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20); entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasIndex(e => e.CompanyId).IsUnique();
+            entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Plan).WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<TenantSubscriptionEvent>(entity =>
+        {
+            entity.ToTable("TenantSubscriptionEvents"); entity.HasKey(e => e.EventId);
+            entity.Property(e => e.Action).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.PreviousStatus).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.NewStatus).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
+            entity.HasIndex(e => new { e.CompanyId, e.CreatedAt });
+            entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.ActorUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<SubscriptionPlan>().WithMany().HasForeignKey(e => e.NewPlanId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<SubscriptionPlan>().WithMany().HasForeignKey(e => e.PreviousPlanId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<Department>(entity =>
@@ -758,6 +798,10 @@ public partial class TaskTuneDbContext : DbContext
         modelBuilder.Entity<AccountSecurityToken>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<TenantLifecycleEvent>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TenantSubscription>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TenantSubscriptionEvent>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.CompanyId == TenantIdOrDefault);
 
         modelBuilder.Entity<UserSession>(entity =>

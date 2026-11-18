@@ -120,3 +120,8 @@ Configure the initial platform administrator user IDs only through trusted deplo
 ## 13. Platform tenant console API
 
 The platform tenant inventory and lifecycle endpoints require the PlatformAdmin policy, which in turn requires a platform_admin=true claim minted only for IDs in trusted deployment configuration. The tenant inventory returns limited operational fields and does not return SettingsJson. Suspend/reactivate operations must include a 10–1,000 character reason and generate an immutable TenantLifecycleEvents record. Review access logs and lifecycle audit events regularly.
+
+
+## 14. P2 plan and entitlement schema
+
+Apply `20261118_007_subscription_entitlements.sql` after the tenant lifecycle migration. Existing tenants are assigned the Legacy plan to preserve current AI chat and task-guidance behavior. The migration does not create paid plans or enable payment collection. New tenants without an active/trial subscription are denied feature-gated actions by default. Plan capacity fields are not hard quotas until the usage-metering slice is implemented.

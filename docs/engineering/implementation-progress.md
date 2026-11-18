@@ -285,3 +285,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Suspend/reactivate routes require a reason and use TenantLifecycleService. The controller never accepts a target CompanyId from the body and records actor, reason and state transition in TenantLifecycleEvents.
 - Added tests for cross-tenant inventory access through the platform service, tenant suspension audit, invalid reason and missing tenant responses, plus metadata enforcement of the PlatformAdmin policy.
 - This is an API foundation; platform admin dashboard UI, subscription plans/entitlements and usage metering remain outstanding.
+
+
+## P2 — plan/feature entitlement schema
+
+- Added a global subscription-plan catalogue, plan feature switches, a single current subscription per tenant and append-only subscription assignment history.
+- The migration creates an idempotent Legacy compatibility plan and assigns it to pre-existing companies, preserving current AI chat and task-guidance behavior.
+- New tenants without an active/trial subscription will be denied feature-gated actions by default. Seat, storage and monthly AI-token limit fields are included for upcoming usage enforcement; no metering or billing processor is claimed yet.
