@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace TaskTune.API.Support;
 
 public sealed record CommunicationOutboxQueueMetrics(

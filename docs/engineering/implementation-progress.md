@@ -221,3 +221,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Added a CEO/Admin queue health panel with Pending, Processing, Sent and DeadLetter totals, oldest pending item age, worker enabled/disabled state and the configured age-warning threshold.
 - Metrics refresh with approval/dead-letter data after operator actions. The panel is hidden when the metrics endpoint is not available to the current role.
+
+
+## Queue metrics CI correction
+
+- The first queue quota/metrics build found that the new metrics service used EF Core query extensions without importing the EF Core namespace. Added the missing import; no runtime behavior changed. Full backend/frontend/Python CI is rerunning.
