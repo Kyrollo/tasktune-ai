@@ -372,3 +372,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## CI correction — qualify filesystem operations in MVC controller
 
 - Fully qualified System.IO.File.Move/Exists/Delete in AttachmentsController. The inherited ControllerBase.File method shadows the System.IO.File type name in controller scope.
+
+
+## CI correction — normalize qualified storage file references
+
+- Corrected the duplicate System.IO namespace prefix introduced when qualifying the MVC controller's filesystem calls.
