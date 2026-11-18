@@ -247,3 +247,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - The attempted package name Microsoft.Extensions.Configuration.Memory is not a published NuGet package. Removed that invalid dependency.
 - Imported Microsoft.Extensions.Configuration in the quota test, which already references Microsoft.Extensions.Configuration 10.0.15, to resolve AddInMemoryCollection without adding another package.
 - The API build passed on the failed run; the test project failed during restore before tests started. Full workflow is rerunning.
+
+
+## Completed — notification object-ownership authorization tests
+
+- Added direct controller regression tests proving notification listing returns only rows for the authenticated user, even when another user belongs to the same company.
+- Added negative tests proving a user cannot mark-read or delete another user's notification; foreign-user IDs return Not Found and leave the other record unchanged.
+- Added metadata checks pinning CEO/Admin authorization to queue metrics, dead-letter listing and replay routes. NotificationsController remains authenticated and has no anonymous action overrides.
+- Expanded the reviewed route-to-resource authorization matrix. The wider raw-SQL, export, cache, storage, webhook and agent-tool audit remains open.

@@ -98,4 +98,39 @@ public sealed class ControllerAuthorizationMetadataTests
         Assert.Equal(ExplicitAnonymousActions.OrderBy(value => value),
             actual.OrderBy(value => value));
     }
+    
+    [Fact]
+    public void CommunicationOutboxOperatorActionsRequireCeoOrAdmin()
+    {
+        var controller = typeof(CommunicationsController);
+        var expected = new[]
+        {
+            nameof(CommunicationsController.GetOutboxMetrics),
+            nameof(CommunicationsController.GetDeadLetterOutbox),
+            nameof(CommunicationsController.ReplayDeadLetter)
+        };
+
+        foreach (var actionName in expected)
+        {
+            var action = controller.GetMethod(actionName);
+            Assert.NotNull(action);
+            var authorization = action!.GetCustomAttributes<AuthorizeAttribute>(inherit: true).SingleOrDefault();
+            Assert.NotNull(authorization);
+            Assert.Equal("CEO,Admin", authorization!.Roles);
+            Assert.Null(action.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true));
+        }
+    }
+
+    [Fact]
+    public void NotificationsControllerRequiresAuthenticationAndHasNoAnonymousOverrides()
+    {
+        var controller = typeof(NotificationsController);
+        Assert.NotEmpty(controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true));
+
+        var actions = controller.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+            .Where(method => method.GetCustomAttributes(inherit: true).OfType<HttpMethodAttribute>().Any());
+        Assert.NotEmpty(actions);
+        Assert.All(actions, action =>
+            Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true)));
+    }
 }

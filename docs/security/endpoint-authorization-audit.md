@@ -20,6 +20,18 @@ Only the following actions are intentionally anonymous. Each carries an explicit
 
 Logout and device-session listing/revocation require authentication. No controller is intended to inherit anonymous access.
 
+## Route-to-resource authorization matrix
+
+| Area / action | Route | Required access | Resource / row boundary |
+|---|---|---|---|
+| NotificationsController.GetNotifications | `GET /api/notifications` | Authenticated session | Only rows where `Notification.UserId` equals the subject in the validated JWT/session |
+| NotificationsController.MarkRead | `PUT /api/notifications/{id}/mark-read` | Authenticated session | Notification must belong to the current user; foreign-user IDs return Not Found |
+| NotificationsController.MarkAllRead | `POST /api/notifications/mark-all-read` | Authenticated session | Bulk update predicate includes current user ID; never tenant-wide |
+| NotificationsController.DeleteNotification | `DELETE /api/notifications/{id}` | Authenticated session | Notification must belong to the current user; foreign-user IDs return Not Found |
+| CommunicationsController.GetOutboxMetrics | `GET /api/communications/outbox/metrics` | CEO/Admin | Current tenant only; content-free status and queue-age aggregates |
+| CommunicationsController.GetDeadLetterOutbox | `GET /api/communications/outbox/dead-letter` | CEO/Admin | Current tenant only; dead-letter rows only |
+| CommunicationsController.ReplayDeadLetter | `POST /api/communications/outbox/{id}/replay` | CEO/Admin | Current tenant; approved parent, DeadLetter state, explicit provider non-acceptance attestation and reason |
+
 ## Controller policy layers
 
 - Every routed action must have effective `[Authorize]` metadata on its controller or method, unless it is on the explicit anonymous allowlist above. `ControllerAuthorizationMetadataTests` enforces this against the compiled API assembly.
@@ -39,4 +51,6 @@ The following model types are required to have EF Core global query filters: Com
 - Cross-tenant identity lookup (for installation-wide email uniqueness and token/invitation verification) must return only the minimum result needed and must never expose the other tenant's record.
 - Outbox claims and lease-state transitions use narrowly scoped SQL Server queue operations. They must validate status, lease ownership and idempotency key; the worker is disabled by default.
 - The attachment-migration utility is an offline operator tool with an explicit dry-run default, application lock, fixed legacy path grammar, digest checks and compare-and-set metadata updates. It is not an HTTP endpoint.
-- The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especially for raw SQL, bulk operations, exports, queued work, caches, webhooks, agent tools and field-level data classifications. Independent adversarial testing remains a release gate.
+- Direct controller regression tests now cover notification listing and single-row mutation ownership, including negative attempts against another user in the same tenant. Metadata tests pin CEO/Admin access to outbox metrics, dead-letter listing and replay. This is a testable authorization slice, not the complete application matrix.
+
+The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especially for raw SQL, exports, queued work, caches, webhooks, agent tools and field-level data classifications. Independent adversarial testing remains a release gate.
