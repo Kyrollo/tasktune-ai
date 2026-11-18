@@ -48,6 +48,7 @@ class GuidanceResponse(BaseModel):
     resources: list[str] = Field(default_factory=list)
     risk_factors: list[str] = Field(default_factory=list)
     success_criteria: dict = Field(default_factory=dict)
+    token_usage: dict[str, int] | None = None
 
 
 app = FastAPI(

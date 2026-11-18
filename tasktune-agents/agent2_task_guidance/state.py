@@ -5,6 +5,8 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any
 
+from usage_metadata import merge_token_usage
+
 from typing_extensions import TypedDict
 
 
@@ -43,4 +45,5 @@ class TaskGuidanceState(TypedDict, total=False):
     risk_factors: list[str]
     success_criteria: dict[str, Any]
     final_output: dict[str, Any]
+    token_usage: Annotated[dict[str, int], merge_token_usage]
     messages: Annotated[list[str], operator.add]

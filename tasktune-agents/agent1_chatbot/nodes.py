@@ -18,6 +18,7 @@ from langchain_groq import ChatGroq
 from pydantic import BaseModel
 
 from .models import ChatbotRequest
+from usage_metadata import invoke_structured_with_usage, merge_token_usage
 from .state import ChatbotState
 
 import os
@@ -242,11 +243,11 @@ def _build_direct_prompt(request: ChatbotRequest) -> tuple[str, str]:
     return system_prompt, user_prompt
 
 
-def _generate_sql_plan(request: ChatbotRequest) -> dict[str, str | None]:
+def _generate_sql_plan(request: ChatbotRequest) -> dict[str, Any]:
     """Step 1: Decide if SQL is needed and generate the query."""
     system_prompt, user_prompt = _build_sql_plan_prompt(request)
-    llm = _get_llm(request, default_temperature=0.1).with_structured_output(ChatbotSqlPlan)
-    result: ChatbotSqlPlan = llm.invoke([
+    llm = _get_llm(request, default_temperature=0.1)
+    result, usage = invoke_structured_with_usage(llm, ChatbotSqlPlan, [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ])
@@ -254,10 +255,11 @@ def _generate_sql_plan(request: ChatbotRequest) -> dict[str, str | None]:
         "reply": result.reply.strip() if result.reply else "",
         "sql_query": result.sql_query.strip() if result.sql_query else None,
         "mode_used": "sql_plan",
+        "token_usage": usage,
     }
 
 
-def _generate_sql_answer(request: ChatbotRequest) -> dict[str, str]:
+def _generate_sql_answer(request: ChatbotRequest) -> dict[str, Any]:
     """Step 2: Format SQL results into natural language answer."""
     sql_context = request.sql_context
     sql = sql_context.executed_sql or sql_context.generated_sql or "" if sql_context else ""
@@ -265,26 +267,53 @@ def _generate_sql_answer(request: ChatbotRequest) -> dict[str, str]:
     error = sql_context.sql_error if sql_context else None
 
     system_prompt, user_prompt = _build_sql_answer_prompt(request, sql, rows, error)
-    llm = _get_llm(request, default_temperature=0.2).with_structured_output(ChatbotSqlAnswer)
-    result: ChatbotSqlAnswer = llm.invoke([
+    llm = _get_llm(request, default_temperature=0.2)
+    result, usage = invoke_structured_with_usage(llm, ChatbotSqlAnswer, [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ])
-    return {"reply": result.reply.strip(), "mode_used": "sql_answer"}
+    return {"reply": result.reply.strip(), "mode_used": "sql_answer", "token_usage": usage}
 
 
-def _generate_direct_reply(request: ChatbotRequest) -> dict[str, str]:
+def _generate_direct_reply(request: ChatbotRequest) -> dict[str, Any]:
     """Fallback: answer without SQL using provided scope data."""
     system_prompt, user_prompt = _build_direct_prompt(request)
-    llm = _get_llm(request, default_temperature=0.2).with_structured_output(ChatbotReply)
-    result: ChatbotReply = llm.invoke([
+    llm = _get_llm(request, default_temperature=0.2)
+    result, usage = invoke_structured_with_usage(llm, ChatbotReply, [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ])
-    return {"reply": result.reply.strip(), "mode_used": "scope_only"}
+    return {"reply": result.reply.strip(), "mode_used": "scope_only", "token_usage": usage}
 
 
-def generate_reply(state: ChatbotState) -> dict[str, str | None]:
+
+def generate_reply(state: ChatbotState) -> dict[str, Any]:
+    """Main entry point — routes to the correct handler based on phase."""
+    request = state["input"]
+    phase = (request.sql_context.phase or "").lower() if request.sql_context else ""
+
+    if phase == "plan":
+        return _generate_sql_plan(request)
+
+    if phase == "answer":
+        return _generate_sql_answer(request)
+
+    plan_result = _generate_sql_plan(request)
+    if plan_result.get("sql_query"):
+        return plan_result
+
+    if plan_result.get("reply"):
+        return {
+            "reply": plan_result["reply"],
+            "mode_used": "direct",
+            "token_usage": plan_result.get("token_usage"),
+        }
+
+    direct_result = _generate_direct_reply(request)
+    combined = merge_token_usage(plan_result.get("token_usage"), direct_result.get("token_usage"))
+    direct_result["token_usage"] = combined or None
+    return direct_result
+state: ChatbotState) -> dict[str, str | None]:
     """Main entry point — routes to the correct handler based on phase."""
     request = state["input"]
     phase = (request.sql_context.phase or "").lower() if request.sql_context else ""

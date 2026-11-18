@@ -59,9 +59,16 @@ class ChatbotRequest(BaseModel):
     agent_config: ChatbotAgentConfig | None = None
 
 
+class ChatbotTokenUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
 class ChatbotResponse(BaseModel):
     reply: str
     sql_query: str | None = Field(default=None, alias="sqlQuery")
     mode_used: str | None = Field(default=None, alias="modeUsed")
+    token_usage: ChatbotTokenUsage | None = None
 
     model_config = ConfigDict(populate_by_name=True)

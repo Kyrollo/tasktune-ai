@@ -26,6 +26,7 @@ from .prompts import (
     SUCCESS_CRITERIA_PROMPT,
 )
 from .state import TaskGuidanceState
+from usage_metadata import extract_token_usage
 
 import os
 MODEL_NAME = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
@@ -72,17 +73,22 @@ def _task_vars(state: TaskGuidanceState) -> dict[str, Any]:
 # ── Node: Analyze Task ──────────────────────────────────────────────────
 
 def analyze_task(state: TaskGuidanceState) -> dict[str, Any]:
-    """Determine whether the task is *simple* or *complex*."""
+    """Determine whether the task is simple or complex."""
     llm = _get_llm(state, temperature=0.2)
-    structured_llm = llm.with_structured_output(TaskComplexityAnalysis)
-    chain = ANALYZE_TASK_PROMPT | structured_llm
-
-    result: TaskComplexityAnalysis = chain.invoke(_task_vars(state))
+    chain = ANALYZE_TASK_PROMPT | llm.with_structured_output(TaskComplexityAnalysis, include_raw=True)
+    response = chain.invoke(_task_vars(state))
+    result = response["parsed"]
+    if result is None:
+        if response.get("parsing_error") is not None:
+            raise response["parsing_error"]
+        raise ValueError("Task complexity response could not be parsed.")
 
     return {
         "complexity": result.complexity.lower(),
+        "token_usage": extract_token_usage(response.get("raw")) or {},
         "messages": [f"[analyze] complexity={result.complexity}: {result.reasoning}"],
     }
+
 
 
 # ── Node: Quick Guidance (simple path) ──────────────────────────────────
@@ -90,15 +96,18 @@ def analyze_task(state: TaskGuidanceState) -> dict[str, Any]:
 def quick_guidance(state: TaskGuidanceState) -> dict[str, Any]:
     """Generate concise guidance for a simple task."""
     llm = _get_llm(state)
-    structured_llm = llm.with_structured_output(QuickGuidance)
-    chain = QUICK_GUIDANCE_PROMPT | structured_llm
-
-    result: QuickGuidance = chain.invoke(_task_vars(state))
+    chain = QUICK_GUIDANCE_PROMPT | llm.with_structured_output(QuickGuidance, include_raw=True)
+    response = chain.invoke(_task_vars(state))
+    result = response["parsed"]
+    if result is None:
+        if response.get("parsing_error") is not None:
+            raise response["parsing_error"]
+        raise ValueError("Quick guidance response could not be parsed.")
 
     breakdown = [item.model_dump() for item in result.task_breakdown]
-
     return {
         "guidance_text": result.guidance_text,
+        "token_usage": extract_token_usage(response.get("raw")) or {},
         "suggested_steps": result.suggested_steps,
         "task_breakdown": breakdown,
         "estimated_time": result.estimated_time,
@@ -107,20 +116,24 @@ def quick_guidance(state: TaskGuidanceState) -> dict[str, Any]:
     }
 
 
+
 # ── Node: Detailed Guidance (complex path) ──────────────────────────────
 
 def detailed_guidance(state: TaskGuidanceState) -> dict[str, Any]:
     """Generate in-depth guidance for a complex task."""
     llm = _get_llm(state, temperature=0.5)
-    structured_llm = llm.with_structured_output(DetailedGuidance)
-    chain = DETAILED_GUIDANCE_PROMPT | structured_llm
-
-    result: DetailedGuidance = chain.invoke(_task_vars(state))
+    chain = DETAILED_GUIDANCE_PROMPT | llm.with_structured_output(DetailedGuidance, include_raw=True)
+    response = chain.invoke(_task_vars(state))
+    result = response["parsed"]
+    if result is None:
+        if response.get("parsing_error") is not None:
+            raise response["parsing_error"]
+        raise ValueError("Detailed guidance response could not be parsed.")
 
     breakdown = [item.model_dump() for item in result.task_breakdown]
-
     return {
         "guidance_text": result.guidance_text,
+        "token_usage": extract_token_usage(response.get("raw")) or {},
         "suggested_steps": result.suggested_steps,
         "task_breakdown": breakdown,
         "estimated_time": result.estimated_time,
@@ -129,31 +142,35 @@ def detailed_guidance(state: TaskGuidanceState) -> dict[str, Any]:
     }
 
 
+
 # ── Node: Risk Assessment ───────────────────────────────────────────────
 
 def assess_risks(state: TaskGuidanceState) -> dict[str, Any]:
     """Identify risk factors and mitigation tips."""
     llm = _get_llm(state, temperature=0.3)
-    structured_llm = llm.with_structured_output(RiskAssessment)
-
     variables = _task_vars(state)
     variables["complexity"] = state.get("complexity", "unknown")
-
-    chain = RISK_ASSESSMENT_PROMPT | structured_llm
-    result: RiskAssessment = chain.invoke(variables)
+    chain = RISK_ASSESSMENT_PROMPT | llm.with_structured_output(RiskAssessment, include_raw=True)
+    response = chain.invoke(variables)
+    result = response["parsed"]
+    if result is None:
+        if response.get("parsing_error") is not None:
+            raise response["parsing_error"]
+        raise ValueError("Risk assessment response could not be parsed.")
 
     combined = [
         f"{risk} — Mitigation: {tip}"
         for risk, tip in zip(result.risk_factors, result.mitigation_tips)
     ]
-    # If lengths don't match, append any extra risks without tips
     if len(result.risk_factors) > len(result.mitigation_tips):
-        combined.extend(result.risk_factors[len(result.mitigation_tips) :])
+        combined.extend(result.risk_factors[len(result.mitigation_tips):])
 
     return {
         "risk_factors": combined,
+        "token_usage": extract_token_usage(response.get("raw")) or {},
         "messages": [f"[assess_risks] found {len(result.risk_factors)} risk(s)"],
     }
+
 
 
 # ── Node: Success Criteria ───────────────────────────────────────────────
@@ -161,21 +178,25 @@ def assess_risks(state: TaskGuidanceState) -> dict[str, Any]:
 def define_success_criteria(state: TaskGuidanceState) -> dict[str, Any]:
     """Define what to deliver and how to know the work is done well."""
     llm = _get_llm(state, temperature=0.3)
-    structured_llm = llm.with_structured_output(SuccessCriteria)
-
     variables = _task_vars(state)
     variables["complexity"] = state.get("complexity", "unknown")
-
-    chain = SUCCESS_CRITERIA_PROMPT | structured_llm
-    result: SuccessCriteria = chain.invoke(variables)
+    chain = SUCCESS_CRITERIA_PROMPT | llm.with_structured_output(SuccessCriteria, include_raw=True)
+    response = chain.invoke(variables)
+    result = response["parsed"]
+    if result is None:
+        if response.get("parsing_error") is not None:
+            raise response["parsing_error"]
+        raise ValueError("Success criteria response could not be parsed.")
 
     return {
         "success_criteria": result.model_dump(),
+        "token_usage": extract_token_usage(response.get("raw")) or {},
         "messages": [
             f"[success_criteria] deliverables={len(result.deliverables)}, "
             f"checks={len(result.completion_checklist)}"
         ],
     }
+
 
 
 # ── Node: Compile Output ────────────────────────────────────────────────
@@ -190,6 +211,7 @@ def compile_output(state: TaskGuidanceState) -> dict[str, Any]:
         "resources": state.get("resources", []),
         "risk_factors": state.get("risk_factors", []),
         "success_criteria": state.get("success_criteria", {}),
+        "token_usage": state.get("token_usage") or None,
     }
     return {
         "final_output": output,
