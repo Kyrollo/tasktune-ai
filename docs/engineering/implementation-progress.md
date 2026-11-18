@@ -240,3 +240,10 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Notification records are saved in the same transaction/save as the approval or rejection state change. Failed/self-review attempts do not create notifications.
 - Updated the notifications page to render the communication notification type as informational.
 - External email notifications are not sent by this feature; the SMTP worker remains disabled by default.
+
+
+## CI dependency correction — configuration extension namespace
+
+- The attempted package name Microsoft.Extensions.Configuration.Memory is not a published NuGet package. Removed that invalid dependency.
+- Imported Microsoft.Extensions.Configuration in the quota test, which already references Microsoft.Extensions.Configuration 10.0.15, to resolve AddInMemoryCollection without adding another package.
+- The API build passed on the failed run; the test project failed during restore before tests started. Full workflow is rerunning.
