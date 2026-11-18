@@ -226,3 +226,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## Queue metrics CI correction
 
 - The first queue quota/metrics build found that the new metrics service used EF Core query extensions without importing the EF Core namespace. Added the missing import; no runtime behavior changed. Full backend/frontend/Python CI is rerunning.
+
+
+## Queue quota test dependency correction
+
+- CI confirmed the API and metrics service build, but the quota test required the Microsoft.Extensions.Configuration.Memory provider used by its in-memory configuration setup. Added the test-project package reference at the same .NET 10 package version as the existing configuration dependency.
