@@ -85,6 +85,7 @@ builder.Services.AddScoped<CommunicationOutboxOperationsService>();
 builder.Services.AddScoped<CommunicationOutboxMetricsService>();
 builder.Services.AddScoped<TenantLifecycleService>();
 builder.Services.AddScoped<TenantEntitlementService>();
+builder.Services.AddScoped<TenantSubscriptionAdministrationService>();
 builder.Services.AddHostedService<CommunicationOutboxWorker>();
 
 builder.Services.AddRateLimiter(options =>
