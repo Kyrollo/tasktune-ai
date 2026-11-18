@@ -31,6 +31,7 @@ public partial class TaskTuneDbContext : DbContext
     public virtual DbSet<CommunicationLog> CommunicationLogs { get; set; }
     public virtual DbSet<CommunicationApproval> CommunicationApprovals { get; set; }
     public virtual DbSet<CommunicationOutbox> CommunicationOutbox { get; set; }
+    public virtual DbSet<TenantLifecycleEvent> TenantLifecycleEvents { get; set; }
 
     public virtual DbSet<Company> Companies { get; set; }
 
@@ -268,12 +269,28 @@ public partial class TaskTuneDbContext : DbContext
             entity.Property(e => e.CompanyName)
                 .IsRequired()
                 .HasMaxLength(255);
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(20)
+                .HasDefaultValue("Active");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getutcdate())")
                 .HasAnnotation("Relational:DefaultConstraintName", "DF_Companies_CreatedAt");
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("(getutcdate())")
                 .HasAnnotation("Relational:DefaultConstraintName", "DF_Companies_UpdatedAt");
+        });
+
+        modelBuilder.Entity<TenantLifecycleEvent>(entity =>
+        {
+            entity.ToTable("TenantLifecycleEvents");
+            entity.HasKey(e => e.EventId);
+            entity.Property(e => e.Action).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.PreviousStatus).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.NewStatus).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
+            entity.HasIndex(e => new { e.CompanyId, e.CreatedAt });
+            entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<Department>(entity =>
@@ -739,6 +756,8 @@ public partial class TaskTuneDbContext : DbContext
         modelBuilder.Entity<UserSession>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.User.CompanyId == TenantIdOrDefault);
         modelBuilder.Entity<AccountSecurityToken>().HasQueryFilter(e => TenantIdOrDefault > 0
+            && e.CompanyId == TenantIdOrDefault);
+        modelBuilder.Entity<TenantLifecycleEvent>().HasQueryFilter(e => TenantIdOrDefault > 0
             && e.CompanyId == TenantIdOrDefault);
 
         modelBuilder.Entity<UserSession>(entity =>

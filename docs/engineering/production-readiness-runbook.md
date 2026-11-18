@@ -105,3 +105,8 @@ A green CI run is necessary but is not a production-readiness certificate.
 The default per-tenant active backlog limit is 1,000 Pending/Processing rows and the default per-approval recipient cap is 250; both can be configured through Email:Outbox:MaxPendingPerTenant and Email:Outbox:MaxRecipientsPerApproval. Quota failures return HTTP 429 and leave the approval Pending. Relational approval checks use SQL Server SERIALIZABLE isolation to protect the backlog check from concurrent approvals.
 
 CEO/Admin users can inspect GET /api/communications/outbox/metrics for tenant-scoped status counts, oldest queue age and the configured warning threshold. A queue-age warning is raised only when the delivery worker is enabled. This endpoint is an operator visibility signal; production alert routing and on-call notifications still need monitoring-platform integration.
+
+
+## 11. P2 tenant lifecycle schema
+
+Existing companies migrate to Status = Active; supported lifecycle values are Active and Suspended. Apply 20261118_006_tenant_lifecycle.sql after the account-security and communication migrations using the backup/review process above. Lifecycle state changes require a reason and are recorded in TenantLifecycleEvents in the same transaction as the company update. The API enforcement and platform operator routes are delivered separately; do not treat the schema migration alone as complete tenant lifecycle protection.

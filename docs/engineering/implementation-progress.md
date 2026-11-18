@@ -260,3 +260,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## SQL Server notification fixture correction
 
 - The SQL Server bulk mark-read test now relies on database-generated identity IDs for the company and both users. It binds the simulated JWT and tenant context to those generated values, avoiding identity-insert assumptions in the relational integration test.
+
+
+## P2 foundation — tenant lifecycle schema and service
+
+- Added tenant status fields (Active/Suspended); existing companies migrate to Active by default with a nullable suspension timestamp.
+- Added a lifecycle service for Active → Suspended and Suspended → Active transitions. Every transition requires a reason, rejects duplicate/invalid states, and writes an immutable lifecycle event with the company update in one transaction.
+- Added a tenant query filter and SQL Server translation coverage for lifecycle events.
+- Added migration 20261118_006_tenant_lifecycle.sql and lifecycle service tests. Authentication enforcement and the platform admin console are the next P2 slices.
