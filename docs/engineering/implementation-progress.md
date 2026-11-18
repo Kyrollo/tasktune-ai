@@ -323,3 +323,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - The summary returns the assigned plan, active/trial/expired/cancelled status, effective dates, current plan capacities and each feature switch. Expired/inactive subscriptions and disabled features are represented as unavailable; capacity values are withheld when the subscription is not active.
 - The tenant query filter remains the final boundary if a caller attempts to request another company ID through direct service use; the HTTP endpoint does not accept one.
 - Added an API authorization metadata test and a tenant-scoped controller regression test.
+
+
+## CI correction — entitlement service using directives
+
+- Moved the EF Core and infrastructure model using directives to the top of TenantEntitlementService.cs, before the newly added entitlement summary record. No runtime behavior changed.

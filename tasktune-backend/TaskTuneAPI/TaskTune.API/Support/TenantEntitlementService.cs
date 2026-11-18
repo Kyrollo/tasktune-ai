@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using TaskTune.Infrastructure.Models;
+
 public sealed record TenantEntitlementSummary(
     int CompanyId,
     string? PlanCode,
@@ -10,9 +13,6 @@ public sealed record TenantEntitlementSummary(
     long? MaxStorageBytes,
     long? MonthlyAiTokenLimit,
     IReadOnlyList<TenantFeatureEntitlement> Features);
-
-using Microsoft.EntityFrameworkCore;
-using TaskTune.Infrastructure.Models;
 
 namespace TaskTune.API.Support;
 
