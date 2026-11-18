@@ -65,6 +65,48 @@ public sealed class AuthServiceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task LoginAndRefresh_RespectSuspendedTenantAndConfiguredPlatformAdmin()
+    {
+        await using var context = CreateContext();
+        var user = CreateUser(BCrypt.Net.BCrypt.HashPassword("Correct-Horse-Battery-42!"));
+        user.Company.Status = "Suspended";
+        user.Company.SuspendedAt = DateTime.UtcNow;
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var regularService = new AuthService(context, CreateConfiguration());
+        Assert.Null(await regularService.LoginAsync(
+            new LoginRequestDto("employee@tasktune.test", "Correct-Horse-Battery-42!")));
+
+        var platformService = new AuthService(context, CreateConfiguration(platformAdminUserIds: "1"));
+        var platformLogin = await platformService.LoginAsync(
+            new LoginRequestDto("employee@tasktune.test", "Correct-Horse-Battery-42!"));
+        Assert.NotNull(platformLogin);
+        var platformJwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(platformLogin.AccessToken);
+        Assert.Contains(platformJwt.Claims, claim => claim.Type == "platform_admin" && claim.Value == "true");
+
+        user.Company.Status = "Active";
+        user.Company.SuspendedAt = null;
+        await context.SaveChangesAsync();
+        var activeLogin = await regularService.LoginAsync(
+            new LoginRequestDto("employee@tasktune.test", "Correct-Horse-Battery-42!"));
+        Assert.NotNull(activeLogin);
+        var activeSessionId = ReadSessionId(activeLogin.AccessToken);
+        var familyId = await context.UserSessions.IgnoreQueryFilters()
+            .Where(session => session.SessionId == activeSessionId)
+            .Select(session => session.FamilyId).SingleAsync();
+
+        user.Company.Status = "Suspended";
+        user.Company.SuspendedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        Assert.Null(await regularService.RefreshTokenAsync(activeLogin.RefreshToken));
+        var family = await context.UserSessions.IgnoreQueryFilters()
+            .Where(session => session.FamilyId == familyId).ToListAsync();
+        Assert.NotEmpty(family);
+        Assert.All(family, session => Assert.NotNull(session.RevokedAt));
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task Logout_RevokesOnlyTheCurrentSessionFamily()
     {
         await using var context = CreateContext();
@@ -107,22 +149,21 @@ public sealed class AuthServiceTests
     private static User CreateUser(string passwordHash)
     {
         var now = DateTime.UtcNow;
+        var company = new Company
+        {
+            CompanyId = 1, CompanyName = "Auth Test Tenant", SettingsJson = "{}",
+            Status = "Active", CreatedAt = now, UpdatedAt = now
+        };
         return new User
         {
-            CompanyId = 1,
-            Email = "employee@tasktune.test",
-            PasswordHash = passwordHash,
-            FirstName = "Test",
-            LastName = "Employee",
-            FullName = "Test Employee",
-            Role = 0,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
+            CompanyId = 1, Company = company,
+            Email = "employee@tasktune.test", PasswordHash = passwordHash,
+            FirstName = "Test", LastName = "Employee", FullName = "Test Employee",
+            Role = 0, IsActive = true, CreatedAt = now, UpdatedAt = now
         };
     }
 
-    private static IConfiguration CreateConfiguration()
+    private static IConfiguration CreateConfiguration(string? platformAdminUserIds = null)
     {
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
         return new ConfigurationBuilder()
@@ -132,7 +173,8 @@ public sealed class AuthServiceTests
                 ["JwtSettings:Issuer"] = "TaskTuneTests",
                 ["JwtSettings:Audience"] = "TaskTuneTestsClient",
                 ["JwtSettings:AccessTokenExpirationMinutes"] = "20",
-                ["JwtSettings:RefreshTokenExpirationDays"] = "7"
+                ["JwtSettings:RefreshTokenExpirationDays"] = "7",
+                ["PlatformAdmin:UserIdsCsv"] = platformAdminUserIds ?? string.Empty
             })
             .Build();
     }

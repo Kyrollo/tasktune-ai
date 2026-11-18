@@ -268,3 +268,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Added a lifecycle service for Active → Suspended and Suspended → Active transitions. Every transition requires a reason, rejects duplicate/invalid states, and writes an immutable lifecycle event with the company update in one transaction.
 - Added a tenant query filter and SQL Server translation coverage for lifecycle events.
 - Added migration 20261118_006_tenant_lifecycle.sql and lifecycle service tests. Authentication enforcement and the platform admin console are the next P2 slices.
+
+
+## P2 foundation — tenant lifecycle enforcement
+
+- Server-side PlatformAdmin:UserIdsCsv configuration is now the only source of the platform_admin JWT claim; it cannot be granted by a tenant user or request payload.
+- Login and refresh reject suspended tenants for ordinary users; a denied refresh revokes the session family. Configured platform administrators retain a recovery path.
+- Tenant membership middleware returns HTTP 403 for authenticated regular members of suspended tenants but still validates the member and session before allowing the platform-admin exception.
+- Added a PlatformAdmin authorization policy and regression tests for suspended-tenant login/refresh and middleware behavior. The platform console endpoints/UI follow in the next P2 change.

@@ -124,7 +124,11 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("PlatformAdmin", policy =>
+        policy.RequireAuthenticatedUser().RequireClaim("platform_admin", "true"));
+});
 
 var agentServiceApiKey = builder.Configuration["AgentServices:ServiceApiKey"];
 if (!builder.Environment.IsDevelopment() &&

@@ -45,6 +45,11 @@ public class AuthService : IAuthService
         if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash))
             return null;
 
+        var tenantActive = await _context.Companies.IgnoreQueryFilters()
+            .AnyAsync(company => company.CompanyId == user.CompanyId && company.Status == "Active");
+        if (!tenantActive && !IsConfiguredPlatformAdmin(user.UserId))
+            return null;
+
         bool passwordValid;
         try { passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash); }
         catch { passwordValid = false; }
@@ -104,6 +109,14 @@ public class AuthService : IAuthService
         var user = await _context.Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.UserId == session.UserId);
         if (user == null || !user.IsActive)
+        {
+            await RevokeFamilyAsync(session.UserId, session.FamilyId);
+            return null;
+        }
+
+        var tenantActive = await _context.Companies.IgnoreQueryFilters()
+            .AnyAsync(company => company.CompanyId == user.CompanyId && company.Status == "Active");
+        if (!tenantActive && !IsConfiguredPlatformAdmin(user.UserId))
         {
             await RevokeFamilyAsync(session.UserId, session.FamilyId);
             return null;
@@ -238,6 +251,8 @@ public class AuthService : IAuthService
             new("role", RoleMap.GetValueOrDefault(user.Role, "Employee")),
             new("companyId", user.CompanyId.ToString())
         };
+        if (IsConfiguredPlatformAdmin(user.UserId))
+            claims.Add(new Claim("platform_admin", "true"));
 
         var token = new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],
@@ -248,6 +263,14 @@ public class AuthService : IAuthService
             signingCredentials: credentials);
 
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
+    }
+
+    private bool IsConfiguredPlatformAdmin(int userId)
+    {
+        var configuredIds = _configuration["PlatformAdmin:UserIdsCsv"];
+        return !string.IsNullOrWhiteSpace(configuredIds) &&
+            configuredIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(value => int.TryParse(value, out var configuredId) && configuredId == userId);
     }
 
     private int GetAccessTokenExpirationMinutes()

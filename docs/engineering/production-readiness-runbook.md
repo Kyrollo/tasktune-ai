@@ -110,3 +110,8 @@ CEO/Admin users can inspect GET /api/communications/outbox/metrics for tenant-sc
 ## 11. P2 tenant lifecycle schema
 
 Existing companies migrate to Status = Active; supported lifecycle values are Active and Suspended. Apply 20261118_006_tenant_lifecycle.sql after the account-security and communication migrations using the backup/review process above. Lifecycle state changes require a reason and are recorded in TenantLifecycleEvents in the same transaction as the company update. The API enforcement and platform operator routes are delivered separately; do not treat the schema migration alone as complete tenant lifecycle protection.
+
+
+## 12. Platform administrator identity
+
+Configure the initial platform administrator user IDs only through trusted deployment configuration at PlatformAdmin:UserIdsCsv (environment variable PlatformAdmin__UserIdsCsv). The value is intentionally empty by default. A user ID in this list receives a platform_admin JWT claim at login/refresh; the PlatformAdmin authorization policy requires that claim. Do not expose a tenant-editable setting for this allowlist.
