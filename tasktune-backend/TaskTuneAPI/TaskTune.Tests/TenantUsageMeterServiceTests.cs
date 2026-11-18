@@ -87,6 +87,92 @@ public sealed class TenantUsageMeterServiceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task PlatformSummaryMeasuresSpecifiedTenantWithoutTenantContext()
+    {
+        var options = new DbContextOptionsBuilder<TaskTuneDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new TaskTuneDbContext(options);
+        var company = new Company
+        {
+            CompanyId = 77, CompanyName = "Platform usage tenant", SettingsJson = "{}",
+            Status = "Active", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        var user = new User
+        {
+            UserId = 700, CompanyId = 77, Company = company, Email = "usage@platform.test",
+            PasswordHash = "test", FirstName = "Usage", LastName = "User", FullName = "Usage User",
+            Role = 2, IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        var plan = new SubscriptionPlan
+        {
+            PlanId = 7, Code = "platform-usage", Name = "Platform usage", IsActive = true,
+            MaxUsers = 5, MaxStorageBytes = 10000, MonthlyAiTokenLimit = 5000,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        var project = new Project
+        {
+            ProjectId = 770, CompanyId = 77, Company = company, ProjectName = "Project",
+            ManagerId = 700, Manager = user, Status = 0,
+            StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 12, 31),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        var task = new TaskTune.Infrastructure.Models.Task
+        {
+            TaskId = 7700, ProjectId = 770, Project = project, TaskName = "Task",
+            Priority = 1, Status = 0, AssignedTo = 700, AssignedToNavigation = user,
+            CreatedBy = 700, CreatedByNavigation = user,
+            StartDate = new DateOnly(2026, 1, 1), DueDate = new DateOnly(2026, 12, 1),
+            CompletionPercentage = 0, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        db.Companies.Add(company);
+        db.Users.Add(user);
+        db.SubscriptionPlans.Add(plan);
+        db.TenantSubscriptions.Add(new TenantSubscription
+        {
+            CompanyId = 77, Company = company, PlanId = 7, Plan = plan, Status = "Active",
+            StartsAt = DateTime.UtcNow.AddDays(-1), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        db.AccountSecurityTokens.Add(new AccountSecurityToken
+        {
+            CompanyId = 77, Email = "pending@platform.test", Purpose = "Invitation",
+            TokenHash = new string('F', 64), CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(12)
+        });
+        db.Projects.Add(project);
+        db.Tasks.Add(task);
+        db.TaskAttachments.Add(new TaskAttachment
+        {
+            AttachmentId = 77000, TaskId = 7700, Task = task, UploadedBy = 700,
+            UploadedByNavigation = user, FileName = "usage.pdf", FilePath = "tasks/7700/usage.pdf",
+            FileSize = 2048, MimeType = "application/octet-stream", UploadedAt = DateTime.UtcNow
+        });
+        db.AIActionsLogs.Add(new AIActionsLog
+        {
+            AiLogId = 770000, ActionType = 1, UserId = 700, User = user,
+            TaskId = 7700, Task = task, InputData = "{}", OutputData = "{}",
+            ModelVersion = "test", Timestamp = DateTime.UtcNow
+        });
+        db.TenantUsageEvents.Add(new TenantUsageEvent
+        {
+            CompanyId = 77, MeterCode = "ai.tokens", Quantity = 1200,
+            IdempotencyKey = "platform-tenant-usage-0001", Source = "provider",
+            OccurredAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await new TenantUsageMeterService(db).GetPlatformTenantSummaryAsync(
+            77, DateTime.UtcNow.Year, DateTime.UtcNow.Month);
+        Assert.Equal(77, summary.CompanyId);
+        Assert.Equal("platform-usage", summary.PlanCode);
+        Assert.Equal(1, summary.ActiveUsers);
+        Assert.Equal(1, summary.PendingInvitations);
+        Assert.Equal(2, summary.SeatsReserved);
+        Assert.Equal(2048, summary.TaskAttachmentStorageBytes);
+        Assert.Equal(1, summary.AiActions);
+        Assert.Equal(1200, summary.AiTokensUsed);
+        Assert.True(summary.AiTokenUsageAvailable);
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task MissingTenantContextCannotRecordOrReadTenantUsage()
     {
         var options = new DbContextOptionsBuilder<TaskTuneDbContext>()

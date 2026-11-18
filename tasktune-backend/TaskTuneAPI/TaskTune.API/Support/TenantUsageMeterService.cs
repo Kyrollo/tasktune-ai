@@ -112,6 +112,75 @@ public sealed class TenantUsageMeterService(TaskTuneDbContext db)
             tokenLimit.HasValue && aiTokens.HasValue ? aiTokens.Value > tokenLimit.Value : null);
     }
 
+    public async Task<TenantUsageSummary> GetPlatformTenantSummaryAsync(
+        int companyId, int year, int month, CancellationToken cancellationToken = default)
+    {
+        if (companyId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(companyId));
+        if (year is < 2000 or > 2100 || month is < 1 or > 12)
+            throw new ArgumentOutOfRangeException(nameof(month), "A valid UTC calendar month is required.");
+
+        var exists = await db.Companies.IgnoreQueryFilters().AnyAsync(
+            company => company.CompanyId == companyId, cancellationToken);
+        if (!exists)
+            throw new KeyNotFoundException("Tenant not found.");
+
+        var start = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = start.AddMonths(1);
+        var now = DateTime.UtcNow;
+
+        var plan = await db.TenantSubscriptions.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => item.CompanyId == companyId &&
+                (item.Status == "Active" || item.Status == "Trial") &&
+                item.StartsAt <= now && (!item.EndsAt.HasValue || item.EndsAt > now) &&
+                item.Plan.IsActive)
+            .Select(item => new
+            {
+                item.Plan.Code,
+                item.Plan.MaxUsers,
+                item.Plan.MaxStorageBytes,
+                item.Plan.MonthlyAiTokenLimit
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var activeUsers = await db.Users.IgnoreQueryFilters()
+            .CountAsync(user => user.CompanyId == companyId && user.IsActive, cancellationToken);
+        var pendingInvitations = await db.AccountSecurityTokens.IgnoreQueryFilters()
+            .CountAsync(token => token.CompanyId == companyId &&
+                token.Purpose == "Invitation" && token.ConsumedAt == null && token.ExpiresAt > now,
+                cancellationToken);
+        var attachmentBytes = await db.TaskAttachments.IgnoreQueryFilters()
+            .Where(attachment => attachment.Task.Project.CompanyId == companyId)
+            .Select(attachment => (long?)attachment.FileSize)
+            .SumAsync(cancellationToken) ?? 0L;
+        var aiActions = await db.AIActionsLogs.IgnoreQueryFilters()
+            .CountAsync(action => action.Timestamp >= start && action.Timestamp < end &&
+                ((action.UserId.HasValue && action.User.CompanyId == companyId) ||
+                 (action.TaskId.HasValue && action.Task.Project.CompanyId == companyId)),
+                cancellationToken);
+
+        var tokenEvents = db.TenantUsageEvents.IgnoreQueryFilters()
+            .Where(item => item.CompanyId == companyId && item.MeterCode == "ai.tokens" &&
+                item.OccurredAt >= start && item.OccurredAt < end);
+        var tokenEventCount = await tokenEvents.CountAsync(cancellationToken);
+        long? aiTokens = tokenEventCount == 0
+            ? null
+            : await tokenEvents.SumAsync(item => item.Quantity, cancellationToken);
+
+        var seatsReserved = activeUsers + pendingInvitations;
+        var maxUsers = plan?.MaxUsers;
+        var maxStorage = plan?.MaxStorageBytes;
+        var tokenLimit = plan?.MonthlyAiTokenLimit;
+        return new TenantUsageSummary(
+            companyId, plan?.Code, plan != null, year, month,
+            activeUsers, pendingInvitations, seatsReserved, maxUsers,
+            attachmentBytes, maxStorage, aiActions, aiTokens, aiTokens.HasValue,
+            tokenLimit,
+            maxUsers.HasValue && seatsReserved > maxUsers.Value,
+            maxStorage.HasValue && attachmentBytes > maxStorage.Value,
+            tokenLimit.HasValue && aiTokens.HasValue ? aiTokens.Value > tokenLimit.Value : null);
+    }
+
     public async Task<UsageRecordResult> RecordAiTokensAsync(
         long quantity, string idempotencyKey, string source,
         DateTime occurredAt, CancellationToken cancellationToken = default)

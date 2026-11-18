@@ -150,6 +150,19 @@ public sealed class ControllerAuthorizationMetadataTests
     }
 
     [Fact]
+    public void PlatformTenantUsageActionIsPartOfThePlatformAdminController()
+    {
+        var controller = typeof(PlatformTenantsController);
+        var authorization = controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).SingleOrDefault();
+        Assert.NotNull(authorization);
+        Assert.Equal("PlatformAdmin", authorization!.Policy);
+        var action = controller.GetMethod(nameof(PlatformTenantsController.GetTenantUsage));
+        Assert.NotNull(action);
+        Assert.NotNull(action!.GetCustomAttributes<HttpGetAttribute>(inherit: true).SingleOrDefault());
+        Assert.Null(action.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true));
+    }
+
+    [Fact]
     public void PlatformTenantControllerRequiresThePlatformAdminPolicy()
     {
         var controller = typeof(PlatformTenantsController);

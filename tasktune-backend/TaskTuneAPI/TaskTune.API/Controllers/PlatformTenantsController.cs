@@ -17,11 +17,16 @@ public sealed class PlatformTenantsController : BaseApiController
 {
     private readonly TaskTuneDbContext _db;
     private readonly TenantLifecycleService _lifecycle;
+    private readonly TenantUsageMeterService _usage;
 
-    public PlatformTenantsController(TaskTuneDbContext db, TenantLifecycleService lifecycle)
+    public PlatformTenantsController(
+        TaskTuneDbContext db,
+        TenantLifecycleService lifecycle,
+        TenantUsageMeterService usage)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _usage = usage;
     }
 
     [HttpGet]
@@ -103,6 +108,34 @@ public sealed class PlatformTenantsController : BaseApiController
             .ToListAsync(cancellationToken);
 
         return Ok(new { company, lifecycle });
+    }
+
+    [HttpGet("{companyId:int}/usage")]
+    public async Task<IActionResult> GetTenantUsage(
+        int companyId,
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
+        CancellationToken cancellationToken = default)
+    {
+        if ((year.HasValue && !month.HasValue) || (!year.HasValue && month.HasValue))
+            return BadRequest(new { message = "Year and month must be supplied together." });
+
+        var now = DateTime.UtcNow;
+        var selectedYear = year ?? now.Year;
+        var selectedMonth = month ?? now.Month;
+        if (selectedYear is < 2000 or > 2100 || selectedMonth is < 1 or > 12)
+            return BadRequest(new { message = "The requested UTC year/month is invalid." });
+
+        try
+        {
+            var summary = await _usage.GetPlatformTenantSummaryAsync(
+                companyId, selectedYear, selectedMonth, cancellationToken);
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
     }
 
     [HttpPost("{companyId:int}/suspend")]
