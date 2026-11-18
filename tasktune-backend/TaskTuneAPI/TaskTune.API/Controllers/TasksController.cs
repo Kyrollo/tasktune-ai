@@ -277,6 +277,7 @@ public class TasksController : BaseApiController
 
     [HttpPost("ai-recommendation")]
     [Authorize(Roles = "Supervisor,Manager,CEO,Admin")]
+    [RequiresTenantFeature("ai.task_guidance")]
     public async Task<IActionResult> GenerateTaskRecommendation([FromBody] TaskRecommendationRequest request)
     {
         var userId = GetCurrentUserId();

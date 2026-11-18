@@ -310,3 +310,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 ## Entitlement authorization test-harness correction
 
 - The API compilation was successful; the first entitlement test run failed compilation because the test helper returns a ServiceProvider directly rather than an IServiceScope. Updated test calls to pass the provider directly to the authorization-filter context.
+
+
+## Entitlement coverage correction
+
+- Added the same ai.task_guidance plan entitlement requirement to the second task-guidance entry point, POST /api/tasks/ai-recommendation. This prevents the alternate recommendation route from bypassing a tenant's AI feature entitlement.
