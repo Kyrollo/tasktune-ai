@@ -13,7 +13,22 @@ const ROLE_BYTE_MAP = { Employee: 0, Supervisor: 1, Manager: 2, HR: 3, CEO: 4, A
 const normalizeRole = (role) =>
   typeof role === 'number' ? (ROLE_NAME_MAP[role] || 'Employee') : (role || 'Employee');
 
-const normalizeAuthUser = (u) => {
+const hasPlatformAdminClaim = (token) => {
+  try {
+    const encoded = token?.split('.')?.[1];
+    if (!encoded) return false;
+    const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const claims = JSON.parse(new TextDecoder().decode(bytes));
+    return claims.platform_admin === true || claims.platform_admin === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const normalizeAuthUser = (u, token = getAccessToken()) => {
   if (!u) return null;
   return {
     id:     u.userId ?? u.id,
@@ -21,6 +36,7 @@ const normalizeAuthUser = (u) => {
     email:  u.email  || '',
     role:   normalizeRole(u.role),
     avatar: u.avatar || null,
+    isPlatformAdmin: hasPlatformAdminClaim(token),
   };
 };
 
@@ -130,10 +146,10 @@ function buildAllowedRoutes(role, permissions) {
 function readStoredUser() {
   const sessUser = sessionStorage.getItem('user');
   const sessTok  = sessionStorage.getItem('accessToken');
-  if (sessTok && sessUser) return normalizeAuthUser(JSON.parse(sessUser));
+  if (sessTok && sessUser) return normalizeAuthUser(JSON.parse(sessUser), sessTok);
   const locUser = localStorage.getItem('user');
   const locTok  = localStorage.getItem('accessToken');
-  if (locTok && locUser) return normalizeAuthUser(JSON.parse(locUser));
+  if (locTok && locUser) return normalizeAuthUser(JSON.parse(locUser), locTok);
   return null;
 }
 
@@ -173,7 +189,7 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const { data } = await authService.login(email, password);
-      const userData = normalizeAuthUser(data.user);
+      const userData = normalizeAuthUser(data.user, data.accessToken);
       persistAuth({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: userData }, rememberMe);
       setUser(userData);
       await fetchPermissions();
@@ -199,34 +215,33 @@ export function AuthProvider({ children }) {
 
   const getNav = useCallback(() => {
     if (!user) return [];
-    if (permissions.length > 0) {
-      const nav = buildNavFromPermissions(user.role, permissions);
-      const forcedByRole = {
-        Supervisor: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        Manager: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        CEO: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        HR: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-        Admin: [{ label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
-      };
-      for (const item of forcedByRole[user.role] || []) {
-        if (!nav.some((n) => n.path === item.path)) {
-          const settingsIdx = nav.findIndex((n) => n.path === '/settings');
-          if (settingsIdx >= 0) nav.splice(settingsIdx, 0, item);
-          else nav.push(item);
-        }
-      }
-      return nav;
+    const nav = permissions.length > 0
+      ? buildNavFromPermissions(user.role, permissions)
+      : [...(FALLBACK_NAV[user.role] || [])];
+    const forcedByRole = {
+      Supervisor: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+      Manager: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+      CEO: [{ label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Communication Center', path: '/hr/communications', icon: 'MessageSquare' }, { label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+      HR: [{ label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+      Admin: [{ label: 'Users Management', path: '/admin/users', icon: 'Users' }, { label: 'My Evaluations', path: '/evaluations', icon: 'Star' }, { label: 'Role Matrix', path: '/admin/roles', icon: 'Shield' }],
+    };
+    for (const item of forcedByRole[user.role] || []) {
+      if (!nav.some((entry) => entry.path === item.path)) nav.push(item);
     }
-    return FALLBACK_NAV[user.role] || [];
+    if (user.isPlatformAdmin && !nav.some((entry) => entry.path === '/platform')) {
+      nav.unshift({ label: 'Platform Console', path: '/platform', icon: 'Building2' });
+    }
+    return nav;
   }, [user, permissions]);
 
   const getDefaultRoute = useCallback(() =>
-    user ? DEFAULT_ROUTE[user.role] || '/dashboard' : '/login',
+    user ? (user.isPlatformAdmin ? '/platform' : DEFAULT_ROUTE[user.role] || '/dashboard') : '/login',
   [user]);
 
   // FIX: return false when no route matches instead of always true
   const canAccessRoute = useCallback((pathname) => {
     if (!user) return false;
+    if (pathname === '/platform') return !!user.isPlatformAdmin;
     if (!permissionsLoaded) return false;
     if (permissions.length === 0) return true;
 

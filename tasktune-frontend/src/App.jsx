@@ -22,16 +22,18 @@ import UsersManagement from './pages/admin/UsersManagement';
 import AIControlPanel from './pages/admin/AIControlPanel';
 import RoleMatrix from './pages/admin/RoleMatrix';
 import AuditLogs from './pages/admin/AuditLogs';
+import PlatformConsole from './pages/admin/PlatformConsole';
 import OrgChart from './pages/shared/OrgChart';
 import EmployeeProfile from './pages/shared/EmployeeProfile';
 import Notifications from './pages/shared/Notifications';
 import Settings from './pages/shared/Settings';
 
-function ProtectedRoute({ children, allowedRoles }) {
+function ProtectedRoute({ children, allowedRoles, platformAdminOnly = false }) {
   const { user, getDefaultRoute, canAccessRoute, permissions, permissionsLoaded } = useAuth();
   const location = useLocation();
 
   if (!user) return <Navigate to="/login" replace />;
+  if (platformAdminOnly && !user.isPlatformAdmin) return <Navigate to={getDefaultRoute()} replace />;
 
   const hasRoleAccess = !allowedRoles || allowedRoles.includes(user.role);
   const canUsePermissionFallback = !!allowedRoles && !hasRoleAccess;
@@ -83,6 +85,7 @@ export default function App() {
       <Route path="/admin/ai" element={<ProtectedRoute allowedRoles={['Admin','CEO']}><AIControlPanel /></ProtectedRoute>} />
       <Route path="/admin/roles" element={<ProtectedRoute allowedRoles={['Supervisor','Manager','HR','Admin','CEO']}><RoleMatrix /></ProtectedRoute>} />
       <Route path="/admin/audit" element={<ProtectedRoute allowedRoles={['Admin','Manager','CEO']}><AuditLogs /></ProtectedRoute>} />
+      <Route path="/platform" element={<ProtectedRoute platformAdminOnly><PlatformConsole /></ProtectedRoute>} />
       <Route path="/directory" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
       <Route path="/profile/:id" element={<ProtectedRoute><EmployeeProfile /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
