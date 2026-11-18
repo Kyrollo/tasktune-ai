@@ -85,3 +85,13 @@ The following model types are required to have EF Core global query filters: Com
 - Direct controller regression tests now cover notification listing and single-row mutation ownership, including negative attempts against another user in the same tenant. Metadata tests pin CEO/Admin access to outbox metrics, dead-letter listing and replay. This is a testable authorization slice, not the complete application matrix.
 
 The exhaustive endpoint-to-entity-to-action matrix is still outstanding, especially for raw SQL, exports, queued work, caches, webhooks, agent tools and field-level data classifications. Independent adversarial testing remains a release gate.
+
+
+## Seat reservation authorization boundary
+
+| Action | Required access | Capacity / row boundary |
+|---|---|---|
+| UsersController.CreateUser | Admin in current tenant | Active users + pending invitations; checks the current subscription seat cap while holding its row lock through user insert |
+| UsersController.CreateInvitation | Admin/CEO/HR in current tenant, plus existing role restrictions | Active users + pending invitations; old invite for the same email is consumed and new reservation is inserted under the same locked transaction |
+| AccountSecurityWorkflowService.CompleteInvitation | Anonymous invitation token, email-bound and single-use | Converts one pending invitation reservation into one active user atomically; must not reserve a second seat |
+

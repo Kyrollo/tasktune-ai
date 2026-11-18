@@ -140,3 +140,8 @@ CI tests cover plan creation and duplicate-code rejection, feature switch normal
 ## 16. Tenant entitlement self-service
 
 Tenant users may view their current plan and enabled modules through GET /api/tenant/entitlements. The endpoint derives the tenant from the authenticated token and returns no data for another company. Treat NULL capacity values as unlimited only when an active plan is present; an inactive/expired subscription has no usable plan limits and no enabled features.
+
+
+## 19. Seat-capacity transaction and operating rules
+
+A seat is reserved by each active user and each unexpired, unconsumed invitation. The seat check and reservation write must remain inside one SERIALIZABLE transaction. On SQL Server, TenantSeatCapacityService takes UPDLOCK/HOLDLOCK on the tenant subscription row so two simultaneous user/invitation requests serialize on one tenant-specific lock point. Do not move the seat count to a frontend-only check or release the transaction before the user/invitation insert. The invitation completion transaction consumes the invitation while creating the user, preserving one seat reservation. NULL MaxUsers represents an unlimited plan capacity. A tenant without a current Active/Trial subscription cannot provision additional users.

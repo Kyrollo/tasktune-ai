@@ -345,3 +345,11 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Exposed authenticated GET /api/tenant/usage for the current UTC month (or a validated requested year/month).
 - Tenant identity is taken from the server's tenant context, not from a query/body CompanyId. Invalid periods are rejected; missing tenant context is denied.
 - Added controller tests for tenant-context binding and invalid reporting periods, plus authorization metadata coverage.
+
+
+## P2 — seat capacity enforcement and concurrency boundary
+
+- Added TenantSeatCapacityService for active-user + unexpired pending-invitation counts against the current Active/Trial plan's MaxUsers.
+- Both direct Admin user creation and invitations execute the capacity check and insert inside a SERIALIZABLE transaction. On SQL Server the service acquires UPDLOCK/HOLDLOCK on the tenant's unique subscription row; this is the shared lock point for all new seat reservations.
+- NULL MaxUsers is unlimited; no active/trial subscription blocks new users/invitations; capacity exhaustion returns HTTP 409 for direct user creation and a non-success invitation result.
+- Added tests that prove pending invitations consume seats and direct user creation fails when the plan capacity is already full. SQL Server CI is validating the new locking query and transaction path.
