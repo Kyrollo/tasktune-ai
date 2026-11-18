@@ -20,7 +20,7 @@ public sealed class TenantEntitlementAuthorizationTests
         using (var scope = BuildScope(db))
         {
             var filter = new RequiresTenantFeatureAttribute("AI.Chat");
-            var context = CreateFilterContext(scope.ServiceProvider);
+            var context = CreateFilterContext(scope);
             await filter.OnAuthorizationAsync(context);
             Assert.Null(context.Result);
         }
@@ -34,7 +34,7 @@ public sealed class TenantEntitlementAuthorizationTests
         using (var scope = BuildScope(noSubscription))
         {
             var filter = new RequiresTenantFeatureAttribute("ai.chat");
-            var context = CreateFilterContext(scope.ServiceProvider);
+            var context = CreateFilterContext(scope);
             await filter.OnAuthorizationAsync(context);
             var denied = Assert.IsType<ObjectResult>(context.Result);
             Assert.Equal(StatusCodes.Status403Forbidden, denied.StatusCode);
@@ -45,7 +45,7 @@ public sealed class TenantEntitlementAuthorizationTests
         using (var scope = BuildScope(featureDisabled))
         {
             var filter = new RequiresTenantFeatureAttribute("ai.chat");
-            var context = CreateFilterContext(scope.ServiceProvider);
+            var context = CreateFilterContext(scope);
             await filter.OnAuthorizationAsync(context);
             Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(context.Result).StatusCode);
         }
@@ -60,7 +60,7 @@ public sealed class TenantEntitlementAuthorizationTests
             await using (db)
             using (var scope = BuildScope(db))
             {
-                var access = await scope.ServiceProvider.GetRequiredService<TenantEntitlementService>()
+                var access = await scope.GetRequiredService<TenantEntitlementService>()
                     .GetFeatureAccessAsync(1, "ai.chat");
                 Assert.False(access.Enabled);
             }

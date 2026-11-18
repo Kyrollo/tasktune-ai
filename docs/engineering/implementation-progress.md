@@ -305,3 +305,8 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 
 - Added regression coverage for plan code normalization/uniqueness, feature switches and limits, tenant assignment/update history, and invalid actors, tenants, plans, statuses, periods and reasons.
 - Added controller metadata tests requiring the PlatformAdmin policy on both plan and subscription endpoints.
+
+
+## Entitlement authorization test-harness correction
+
+- The API compilation was successful; the first entitlement test run failed compilation because the test helper returns a ServiceProvider directly rather than an IServiceScope. Updated test calls to pass the provider directly to the authorization-filter context.
