@@ -215,3 +215,9 @@ Phase 7 provides durable approval, delivery staging and an opt-in SMTP dispatche
 - Relational approval transitions use a SQL Server SERIALIZABLE transaction around the backlog check and approval/outbox write to protect the quota from ordinary concurrent approvals. In-memory regression tests verify limits and no-partial-write behavior; SQL Server execution remains a CI integration gate.
 - Added a CEO/Admin tenant-scoped queue metrics endpoint reporting Pending, Processing, Sent, Failed, DeadLetter, oldest pending/processing age, worker state and queue-age warning threshold.
 - Added safe appsettings defaults. Email:Outbox:Enabled remains false.
+
+
+## Completed — Communication Center queue health panel
+
+- Added a CEO/Admin queue health panel with Pending, Processing, Sent and DeadLetter totals, oldest pending item age, worker enabled/disabled state and the configured age-warning threshold.
+- Metrics refresh with approval/dead-letter data after operator actions. The panel is hidden when the metrics endpoint is not available to the current role.

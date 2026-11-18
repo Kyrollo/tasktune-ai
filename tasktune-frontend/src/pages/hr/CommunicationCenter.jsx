@@ -23,6 +23,7 @@ export default function CommunicationCenter() {
   const [deadLetterReasons, setDeadLetterReasons] = useState({});
   const [outboxBusyId, setOutboxBusyId] = useState(null);
   const [canManageOutbox, setCanManageOutbox] = useState(false);
+  const [outboxMetrics, setOutboxMetrics] = useState(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => window.crypto.randomUUID());
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -53,24 +54,27 @@ export default function CommunicationCenter() {
   };
 
   const refreshApprovals = async () => {
-    const [approvalsResponse, deadLetterResponse] = await Promise.all([
+    const [approvalsResponse, deadLetterResponse, metricsResponse] = await Promise.all([
       communicationService.getApprovals(),
       communicationService.getDeadLetterOutbox().catch(() => null),
+      communicationService.getOutboxMetrics().catch(() => null),
     ]);
     setPendingApprovals(approvalsResponse.data?.items ?? []);
     setCanManageOutbox(Boolean(deadLetterResponse));
     setDeadLetterItems(deadLetterResponse?.data?.items ?? []);
+    setOutboxMetrics(metricsResponse?.data ?? null);
   };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [commsRes, usersRes, overviewRes, approvalsRes, deadLetterRes] = await Promise.all([
+        const [commsRes, usersRes, overviewRes, approvalsRes, deadLetterRes, outboxMetricsRes] = await Promise.all([
           communicationService.getCommunications(),
           userService.getUsers(),
           communicationService.getOverview().catch(() => ({ data: null })),
           communicationService.getApprovals().catch(() => ({ data: { items: [] } })),
           communicationService.getDeadLetterOutbox().catch(() => null),
+          communicationService.getOutboxMetrics().catch(() => null),
         ]);
         const commsData = commsRes.data;
         const usersData = usersRes.data;
@@ -83,6 +87,7 @@ export default function CommunicationCenter() {
         setPendingApprovals(approvalsRes.data?.items ?? []);
         setCanManageOutbox(Boolean(deadLetterRes));
         setDeadLetterItems(deadLetterRes?.data?.items ?? []);
+        setOutboxMetrics(outboxMetricsRes?.data ?? null);
       } catch (err) {
         console.error('Failed to load communications:', err);
       } finally {
@@ -514,6 +519,27 @@ export default function CommunicationCenter() {
             </p>
           </Card>
 
+          {canManageOutbox && outboxMetrics && (
+            <Card>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-base font-semibold text-text-primary">Delivery queue health</h3>
+                <Badge variant={outboxMetrics.queueAgeWarning || outboxMetrics.deadLetter > 0 ? 'warning' : 'success'}>
+                  {outboxMetrics.queueAgeWarning ? 'Queue delay' : outboxMetrics.deliveryWorkerEnabled ? 'Worker enabled' : 'Worker disabled'}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="rounded-lg bg-bg p-3"><p className="text-lg font-semibold">{outboxMetrics.pending}</p><p className="text-xs text-text-muted">Pending</p></div>
+                <div className="rounded-lg bg-bg p-3"><p className="text-lg font-semibold">{outboxMetrics.processing}</p><p className="text-xs text-text-muted">Processing</p></div>
+                <div className="rounded-lg bg-bg p-3"><p className="text-lg font-semibold">{outboxMetrics.sent}</p><p className="text-xs text-text-muted">Sent</p></div>
+                <div className="rounded-lg bg-bg p-3"><p className="text-lg font-semibold">{outboxMetrics.deadLetter}</p><p className="text-xs text-text-muted">Dead letter</p></div>
+              </div>
+              <p className="text-xs text-text-muted mt-3">
+                Oldest pending: {outboxMetrics.oldestPendingAgeSeconds == null ? '—' : Math.floor(outboxMetrics.oldestPendingAgeSeconds / 60) + ' min'}
+                {' · '}Warning threshold: {outboxMetrics.queueAgeWarningMinutes} min
+              </p>
+              {outboxMetrics.queueAgeWarning && <p className="text-sm text-warning mt-2">Pending delivery age exceeded the configured warning threshold while the delivery worker is enabled.</p>}
+            </Card>
+          )}
           {canManageOutbox && (
             <Card>
               <div className="flex items-center justify-between gap-3 mb-3">
